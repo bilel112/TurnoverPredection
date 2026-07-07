@@ -16,7 +16,7 @@ public class Employee {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    private Integer employeeNumber;   // Important pour le dataset
+    private Integer employeeNumber;
 
     private Integer age;
 
@@ -32,10 +32,30 @@ public class Employee {
 
     private Boolean overtime;
 
-    private Integer jobSatisfaction;           // 1 à 4
-    private Integer environmentSatisfaction;   // 1 à 4
+    private Integer jobSatisfaction;           // 1-4
+    private Integer environmentSatisfaction;   // 1-4
 
-    private Boolean attrition;                 // True = départ (Yes)
+    private Boolean attrition;                 // True = Yes (départ)
 
-    // Tu pourras ajouter d'autres champs plus tard
+    // === Colonnes recommandées par l'EDA ===
+    private String businessTravel;
+    private String maritalStatus;
+    private Integer jobLevel;
+    private Integer totalWorkingYears;
+    private Integer yearsInCurrentRole;
+    private Integer yearsWithCurrManager;
+    private Integer yearsSinceLastPromotion;
+    private Integer stockOptionLevel;
+    private Integer numCompaniesWorked;
+    private Integer trainingTimesLastYear;
+    private Integer workLifeBalance;
+    private String educationField;
+    private Integer education;                 // 1-5
+
+    // Colonnes moins prioritaires mais utiles pour analyses futures
+    private Integer dailyRate;
+    private Integer hourlyRate;
+    private Integer percentSalaryHike;
+    private Integer performanceRating;
+    private String gender;
 }

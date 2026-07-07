@@ -25,66 +25,111 @@ public class DataInitializer implements CommandLineRunner {
 
     @Override
     public void run(String... args) throws Exception {
-        // Ne pas ré-importer si la table contient déjà des données
+
         if (employeeRepository.count() > 0) {
-            log.info("Les données employés sont déjà présentes ({})", employeeRepository.count());
+            log.info("Données déjà présentes ({} employés)", employeeRepository.count());
             return;
         }
 
-        log.info("Début de l'import du dataset IBM HR Attrition...");
+        log.info("Début de l'import du dataset IBM HR Attrition (séparateur ;) ...");
+
+        int imported = 0;
+        int skipped = 0;
 
         try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(
-                        Objects.requireNonNull(getClass().getResourceAsStream("/data/dataIBM.csv")),
+                        Objects.requireNonNull(getClass().getResourceAsStream("/data/ibm_hr_attrition.csv")),
                         StandardCharsets.UTF_8))) {
 
             String line;
             boolean isHeader = true;
-            int imported = 0;
 
             while ((line = reader.readLine()) != null) {
                 if (isHeader) {
                     isHeader = false;
-                    continue; // sauter l'en-tête
+                    continue;
                 }
 
-                String[] values = line.split(",");
+                // Utilisation du point-virgule
+                String[] values = line.split(";", -1); // -1 pour garder les champs vides
 
-                if (values.length < 10) continue; // ligne invalide
+                if (values.length < 20) {
+                    skipped++;
+                    continue;
+                }
+
+                // ... (partie haute identique)
 
                 try {
-                    Employee employee = new Employee();
+                    Employee emp = new Employee();
 
-                    employee.setEmployeeNumber(Integer.parseInt(values[0].trim())); // EmployeeNumber
-                    employee.setAge(Integer.parseInt(values[1].trim()));           // Age
-                    employee.setAttrition("Yes".equalsIgnoreCase(values[2].trim())); // Attrition
-                    employee.setDepartment(values[4].trim());                       // Department
-                    employee.setDistanceFromHome(Integer.parseInt(values[5].trim()));
-                    employee.setJobRole(values[8].trim());                         // JobRole
-                    employee.setMonthlyIncome(Double.parseDouble(values[17].trim())); // MonthlyIncome
-                    employee.setOvertime("Yes".equalsIgnoreCase(values[20].trim()));
-                    employee.setYearsAtCompany(Integer.parseInt(values[12].trim()));
+                    emp.setEmployeeNumber(parseInt(values[9]));
+                    emp.setAge(parseInt(values[0]));
+                    emp.setAttrition("Yes".equalsIgnoreCase(values[1].trim()));
+                    emp.setDepartment(values[4].trim());
+                    emp.setDistanceFromHome(parseInt(values[5]));
+                    emp.setJobRole(values[15].trim());
+                    emp.setMonthlyIncome(parseDouble(values[18]));
+                    emp.setOvertime("Yes".equalsIgnoreCase(values[22].trim()));
+                    emp.setYearsAtCompany(parseInt(values[31]));
 
-                    // Satisfaction (colonnes importantes)
-                    employee.setEnvironmentSatisfaction(Integer.parseInt(values[9].trim()));
-                    employee.setJobSatisfaction(Integer.parseInt(values[16].trim()));
+                    emp.setEnvironmentSatisfaction(parseInt(values[10]));
+                    emp.setJobSatisfaction(parseInt(values[16]));
 
-                    employeeRepository.save(employee);
+                    // Nouveaux champs importants
+                    emp.setBusinessTravel(values[2].trim());
+                    emp.setMaritalStatus(values[17].trim());
+                    emp.setJobLevel(parseInt(values[14]));
+                    emp.setTotalWorkingYears(parseInt(values[28]));
+                    emp.setYearsInCurrentRole(parseInt(values[32]));
+                    emp.setYearsWithCurrManager(parseInt(values[34]));
+                    emp.setYearsSinceLastPromotion(parseInt(values[33]));
+                    emp.setStockOptionLevel(parseInt(values[27]));
+                    emp.setNumCompaniesWorked(parseInt(values[20]));
+                    emp.setTrainingTimesLastYear(parseInt(values[29]));
+                    emp.setWorkLifeBalance(parseInt(values[30]));
+                    emp.setEducationField(values[7].trim());
+                    emp.setEducation(parseInt(values[6]));
+                    emp.setGender(values[11].trim());
+
+                    // Optionnels
+                    emp.setDailyRate(parseInt(values[3]));
+                    emp.setHourlyRate(parseInt(values[12]));
+                    emp.setPercentSalaryHike(parseInt(values[23]));
+                    emp.setPerformanceRating(parseInt(values[24]));
+
+                    employeeRepository.save(emp);
+
                     imported++;
-
-                    if (imported % 200 == 0) {
+                    if (imported % 300 == 0) {
                         log.info("{} employés importés...", imported);
                     }
 
                 } catch (Exception e) {
-                    log.warn("Erreur sur la ligne : {} - {}", line, e.getMessage());
+                    skipped++;
                 }
             }
 
-            log.info("Import terminé avec succès ! {} employés importés.", imported);
+            log.info("Import terminé ! {} employés importés | {} lignes ignorées", imported, skipped);
 
         } catch (Exception e) {
-            log.error("Erreur lors de l'import du dataset", e);
+            log.error("Erreur critique pendant l'import", e);
+        }
+    }
+
+    private Integer parseInt(String s) {
+        try {
+            return s != null && !s.trim().isEmpty() ? Integer.parseInt(s.trim()) : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private Double parseDouble(String s) {
+        try {
+            return s != null && !s.trim().isEmpty() ? Double.parseDouble(s.trim()) : null;
+        } catch (Exception e) {
+            return null;
         }
     }
 }
