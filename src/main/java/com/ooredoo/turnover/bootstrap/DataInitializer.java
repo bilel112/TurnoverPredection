@@ -1,7 +1,12 @@
 package com.ooredoo.turnover.bootstrap;
 
 import com.ooredoo.turnover.entity.Employee;
+import com.ooredoo.turnover.entity.Role;
+import com.ooredoo.turnover.entity.User;
 import com.ooredoo.turnover.repository.EmployeeRepository;
+import com.ooredoo.turnover.repository.RoleRepository;
+import com.ooredoo.turnover.repository.UserRepository;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
@@ -10,6 +15,7 @@ import org.springframework.stereotype.Component;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Objects;
 
 @Component
@@ -18,13 +24,101 @@ public class DataInitializer implements CommandLineRunner {
     private static final Logger log = LoggerFactory.getLogger(DataInitializer.class);
 
     private final EmployeeRepository employeeRepository;
+    private final RoleRepository roleRepository;
+    private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
 
-    public DataInitializer(EmployeeRepository employeeRepository) {
+    public DataInitializer(EmployeeRepository employeeRepository, RoleRepository roleRepository, UserRepository userRepository, PasswordEncoder passwordEncoder) {
         this.employeeRepository = employeeRepository;
+        this.roleRepository = roleRepository;
+        this.userRepository = userRepository;
+        this.passwordEncoder = passwordEncoder;
     }
 
     @Override
     public void run(String... args) throws Exception {
+        // Initialisation des rôles
+        if (roleRepository.count() == 0) {
+            roleRepository.save(new Role(null, "ADMIN"));
+            roleRepository.save(new Role(null, "HR"));
+            roleRepository.save(new Role(null, "MANAGER"));
+            roleRepository.save(new Role(null, "EMPLOYEE"));
+            log.info("Rôles par défaut initialisés : ADMIN, HR, MANAGER, EMPLOYEE");
+        }
+
+        // Normalize existing role names and ensure canonical roles exist
+        List<Role> existingRoles = roleRepository.findAll();
+        for (Role role : existingRoles) {
+            String normalized = role.getName() == null ? "" : role.getName().trim().toUpperCase();
+            if (!normalized.equals(role.getName())) {
+                role.setName(normalized);
+                roleRepository.save(role);
+            }
+        }
+        for (String canonicalRole : List.of("ADMIN", "HR", "MANAGER", "EMPLOYEE")) {
+            roleRepository.findByName(canonicalRole)
+                    .orElseGet(() -> roleRepository.save(new Role(null, canonicalRole)));
+        }
+
+        // Initialisation des comptes par défaut
+        if (!userRepository.existsByUsername("admin")) {
+            Role adminRole = roleRepository.findByName("ADMIN")
+                    .orElseGet(() -> roleRepository.save(new Role(null, "ADMIN")));
+            User admin = new User();
+            admin.setUsername("admin");
+            admin.setEmail("admin@ooredoo.com");
+            admin.setPassword(passwordEncoder.encode("admin123"));
+            admin.setRole(adminRole);
+            userRepository.save(admin);
+            log.info("Utilisateur par défaut initialisé : admin / admin123");
+        }
+
+        if (!userRepository.existsByUsername("manager")) {
+            Role managerRole = roleRepository.findByName("MANAGER")
+                    .orElseGet(() -> roleRepository.save(new Role(null, "MANAGER")));
+            User manager = new User();
+            manager.setUsername("manager");
+            manager.setEmail("manager@ooredoo.com");
+            manager.setPassword(passwordEncoder.encode("manager123"));
+            manager.setRole(managerRole);
+            userRepository.save(manager);
+            log.info("Utilisateur par défaut initialisé : manager / manager123");
+        }
+
+        if (!userRepository.existsByUsername("rh1")) {
+            Role hrRole = roleRepository.findByName("HR")
+                    .orElseGet(() -> roleRepository.save(new Role(null, "HR")));
+            User hrUser = new User();
+            hrUser.setUsername("rh1");
+            hrUser.setEmail("rh1@ooredoo.com");
+            hrUser.setPassword(passwordEncoder.encode("rh123"));
+            hrUser.setRole(hrRole);
+            userRepository.save(hrUser);
+            log.info("Utilisateur par défaut initialisé : rh1 / rh123");
+        }
+
+        if (!userRepository.existsByUsername("employee")) {
+            Role employeeRole = roleRepository.findByName("EMPLOYEE")
+                    .orElseGet(() -> roleRepository.save(new Role(null, "EMPLOYEE")));
+            User employeeUser = new User();
+            employeeUser.setUsername("employee");
+            employeeUser.setEmail("employee@ooredoo.com");
+            employeeUser.setPassword(passwordEncoder.encode("employee123"));
+            employeeUser.setRole(employeeRole);
+            userRepository.save(employeeUser);
+            log.info("Utilisateur par défaut initialisé : employee / employee123");
+        }
+        
+        // If users exist with plain text passwords, upgrade them to BCrypt on startup
+        List<User> existingUsers = userRepository.findAll();
+        for (User user : existingUsers) {
+            String password = user.getPassword();
+            if (password != null && !password.startsWith("$2a$") && !password.startsWith("$2b$") && !password.startsWith("$2y$")) {
+                user.setPassword(passwordEncoder.encode(password));
+                userRepository.save(user);
+                log.info("Mot de passe encodé pour l'utilisateur : {}", user.getUsername());
+            }
+        }
 
         if (employeeRepository.count() > 0) {
             log.info("Données déjà présentes ({} employés)", employeeRepository.count());
