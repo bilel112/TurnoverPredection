@@ -1,0 +1,41 @@
+{
+  "BusinessTravel": [
+    "Non-Travel",
+    "Travel"
+  ],
+  "Department": [
+    "Human Resources",
+    "Research & Development",
+    "Sales"
+  ],
+  "EducationField": [
+    "Human Resources",
+    "Life Sciences",
+    "Marketing",
+    "Medical",
+    "Other",
+    "Technical Degree"
+  ],
+  "Gender": [
+    "Female",
+    "Male"
+  ],
+  "JobRole": [
+    "Healthcare Representative",
+    "Laboratory Technician",
+    "Manager",
+    "Manufacturing Director",
+    "Other",
+    "Research Scientist",
+    "Sales Executive"
+  ],
+  "MaritalStatus": [
+    "Divorced",
+    "Married",
+    "Single"
+  ],
+  "OverTime": [
+    "No",
+    "Yes"
+  ]
+}
