@@ -7,6 +7,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -24,6 +25,7 @@ public class EmployeeController {
     }
 
     @PostMapping
+    @PreAuthorize("hasAnyRole('HR','ADMIN')")
     public ResponseEntity<EmployeeDTO> create(@RequestBody EmployeeDTO employeeDTO) {
         log.info("Création d'un nouvel employé : {}", employeeDTO.getEmployeeNumber());
         EmployeeDTO saved = employeeService.save(employeeDTO);
@@ -31,6 +33,7 @@ public class EmployeeController {
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("hasAnyRole('HR','MANAGER','ADMIN')")
     public ResponseEntity<EmployeeDTO> getById(@PathVariable Long id) {
         return employeeService.findById(id)
                 .map(ResponseEntity::ok)
@@ -38,16 +41,19 @@ public class EmployeeController {
     }
 
     @GetMapping
+    @PreAuthorize("hasAnyRole('HR','MANAGER','ADMIN')")
     public ResponseEntity<List<EmployeeDTO>> getAll() {
         return ResponseEntity.ok(employeeService.findAll());
     }
 
     @GetMapping("/paginated")
+    @PreAuthorize("hasAnyRole('HR','MANAGER','ADMIN')")
     public ResponseEntity<Page<EmployeeDTO>> getAllPaginated(Pageable pageable) {
         return ResponseEntity.ok(employeeService.findAllPaginated(pageable));
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('HR','ADMIN')")
     public ResponseEntity<EmployeeDTO> update(@PathVariable Long id, @RequestBody EmployeeDTO employeeDTO) {
         log.info("Mise à jour de l'employé ID : {}", id);
         employeeDTO.setId(id);
@@ -56,6 +62,7 @@ public class EmployeeController {
     }
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyRole('HR','ADMIN')")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
         log.info("Suppression de l'employé ID : {}", id);
         employeeService.deleteById(id);
