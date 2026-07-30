@@ -7,6 +7,7 @@ import com.ooredoo.turnover.repository.EmployeeRepository;
 import com.ooredoo.turnover.repository.EmployeeRiskScoreRepository;
 import com.ooredoo.turnover.service.DynamicTurnoverScoreResult;
 import com.ooredoo.turnover.service.DynamicTurnoverScoringService;
+import com.ooredoo.turnover.service.AlertService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,14 +23,24 @@ public class DynamicTurnoverScoringServiceImpl implements DynamicTurnoverScoring
     private final EmployeeRepository employeeRepository;
     private final EmployeeRiskScoreRepository employeeRiskScoreRepository;
     private final DynamicScoringProperties scoringProperties;
+    private final AlertService alertService;
 
     @Autowired
     public DynamicTurnoverScoringServiceImpl(EmployeeRepository employeeRepository,
                                              EmployeeRiskScoreRepository employeeRiskScoreRepository,
-                                             DynamicScoringProperties scoringProperties) {
+                                             DynamicScoringProperties scoringProperties,
+                                             AlertService alertService) {
         this.employeeRepository = employeeRepository;
         this.employeeRiskScoreRepository = employeeRiskScoreRepository;
         this.scoringProperties = scoringProperties;
+        this.alertService = alertService;
+    }
+
+    // Backwards-compatible constructor for tests and existing callers
+    public DynamicTurnoverScoringServiceImpl(EmployeeRepository employeeRepository,
+                                             EmployeeRiskScoreRepository employeeRiskScoreRepository,
+                                             DynamicScoringProperties scoringProperties) {
+        this(employeeRepository, employeeRiskScoreRepository, scoringProperties, null);
     }
 
     @Override
@@ -102,6 +113,18 @@ public class DynamicTurnoverScoringServiceImpl implements DynamicTurnoverScoring
         scoreEntity.setReasons(String.join(";", result.getReasons()));
 
         employeeRiskScoreRepository.save(scoreEntity);
+        // Create an alert for high risk employees (MVP behavior)
+        if ("HIGH".equalsIgnoreCase(result.getRiskLevel())) {
+            String message = String.format("Score: %d. Raisons: %s", result.getScore(), String.join(", ", result.getReasons()));
+            if (alertService != null) {
+                try {
+                    alertService.createAlertForEmployee(employeeId, "Risque élevé détecté", message, "HIGH");
+                } catch (Exception ex) {
+                    // Log and continue; alerting should not break scoring
+                    System.err.println("Failed to create alert for employee " + employeeId + ": " + ex.getMessage());
+                }
+            }
+        }
         return result;
     }
 
