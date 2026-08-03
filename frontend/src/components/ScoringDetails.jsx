@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { DynamicTurnoverService } from '../services/api';
+import { DynamicTurnoverService, RecommendationService } from '../services/api';
 import { AlertCircle, Calendar, X, ChevronDown, ChevronUp } from 'lucide-react';
 
 const ScoringDetails = ({ employeeId, employeeName, employee = {}, onClose }) => {
@@ -8,6 +8,10 @@ const ScoringDetails = ({ employeeId, employeeName, employee = {}, onClose }) =>
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [expandedHistoryItem, setExpandedHistoryItem] = useState(null);
+  const [recommendations, setRecommendations] = useState([]);
+  const [aiSummary, setAiSummary] = useState('');
+  const [recommendationLoading, setRecommendationLoading] = useState(false);
+  const [recommendationError, setRecommendationError] = useState(null);
 
   useEffect(() => {
     if (employeeId) loadScoringData();
@@ -17,6 +21,9 @@ const ScoringDetails = ({ employeeId, employeeName, employee = {}, onClose }) =>
     try {
       setLoading(true);
       setError(null);
+      setRecommendationError(null);
+      setRecommendations([]);
+      setAiSummary('');
       const [scoreData, historyData] = await Promise.all([
         DynamicTurnoverService.getScoreForEmployee(employeeId),
         DynamicTurnoverService.getScoreHistoryForEmployee(employeeId),
@@ -28,6 +35,21 @@ const ScoringDetails = ({ employeeId, employeeName, employee = {}, onClose }) =>
       setError(err?.response?.data?.message || err.message || 'Erreur lors du chargement');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const generateRecommendations = async () => {
+    try {
+      setRecommendationLoading(true);
+      setRecommendationError(null);
+      const data = await RecommendationService.generateForEmployee(employeeId);
+      setRecommendations(data.recommendations || []);
+      setAiSummary(data.aiSummary || data.summary || '');
+    } catch (err) {
+      console.error('Erreur lors de la génération des recommandations', err);
+      setRecommendationError(err?.response?.data?.message || err.message || 'Erreur lors de la génération');
+    } finally {
+      setRecommendationLoading(false);
     }
   };
 
@@ -248,6 +270,50 @@ const ScoringDetails = ({ employeeId, employeeName, employee = {}, onClose }) =>
                   </div>
                 </div>
               )}
+
+              <div className="section-card">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div className="section-title">Recommandations RH</div>
+                    <div className="section-subtitle">Génère des recommandations IA basées sur les colonnes de l'employé et les raisons du score.</div>
+                  </div>
+                  <button
+                    className="btn btn-primary"
+                    onClick={generateRecommendations}
+                    disabled={recommendationLoading || !score}
+                  >
+                    {recommendationLoading ? 'Génération en cours...' : 'Générer des recommandations'}
+                  </button>
+                </div>
+                {recommendationError && (
+                  <div className="section-card modal-error" style={{ marginTop: '1rem' }}>
+                    Erreur : {recommendationError}
+                  </div>
+                )}
+                {aiSummary && (
+                  <div className="section-card" style={{ marginTop: '1rem' }}>
+                    <div className="section-title">Résumé IA</div>
+                    <p style={{ marginTop: '0.75rem', lineHeight: 1.7 }}>{aiSummary}</p>
+                  </div>
+                )}
+                {recommendations.length > 0 && (
+                  <div className="section-card" style={{ marginTop: '1rem' }}>
+                    <div className="section-title">Actions recommandées</div>
+                    <div className="recommendation-list" style={{ marginTop: '1rem' }}>
+                      {recommendations.map((rec, index) => (
+                        <div key={index} className="recommendation-item" style={{ padding: '1rem', border: '1px solid var(--border-color)', borderRadius: '0.75rem', marginBottom: '0.75rem' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                            <div style={{ fontWeight: 700 }}>{rec.title}</div>
+                            <span className={`badge ${rec.priority === 'high' ? 'badge-danger' : rec.priority === 'medium' ? 'badge-warning' : 'badge-success'}`}>{rec.priority}</span>
+                          </div>
+                          <div style={{ marginBottom: '0.5rem', color: 'var(--text-muted)' }}>{rec.reason}</div>
+                          <div style={{ fontWeight: 600 }}>{rec.action}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
 
               <div className="section-card">
                 <div className="section-title">Historique des Scores</div>

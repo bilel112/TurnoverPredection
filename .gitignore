@@ -4,13 +4,7 @@
 # Log files
 *.log
 
-# BlueJ files
-*.ctxt
-
-# Mobile Tools for Java (J2ME)
-.mtj.tmp/
-
-# Package Files #
+# Package files
 *.jar
 *.war
 *.nar
@@ -29,24 +23,23 @@ release.properties
 dependency-reduced-pom.xml
 buildNumber.properties
 
-# Eclipse
+# IDE files
 .metadata/
 .classpath
 .project
 .settings/
 .factorypath
-
-# IntelliJ
 .idea/
 *.iml
+*.iws
+*.ipr
 out/
 
 # NetBeans
-nbproject/private/
-build/
-nbbuild/
+/nbproject/private/
+/nbbuild/
 dist/
-nbdist/
+/nbdist/
 .nb-gradle/
 
 # VS Code
@@ -56,38 +49,53 @@ nbdist/
 .DS_Store
 Thumbs.db
 
-# dotenv
+# dotenv / local secrets
 .env
-HELP.md
-target/
-.mvn/wrapper/maven-wrapper.jar
+.env.*
+src/main/resources/application-local.properties
+
+# Python
+**/__pycache__/
+**/*.py[cod]
+**/*.pyo
+**/*.pyd
+**/.Python
+**/env/
+**/venv/
+**/.venv/
+**/.mypy_cache/
+**/.pytest_cache/
+**/.coverage
+**/coverage.xml
+**/pip-wheel-metadata/
+**/python_env/
+**/.python-version
+
+# Local Python virtual environment in notebooks
+/ml/notebooks/.venv/
+
+# Node / frontend
+frontend/node_modules/
+frontend/dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Generated files
+*.tmp
+*.bak
+*.swp
+*.swo
+
+# Git metadata
+*.orig
+
+# Keep generated folders in nested modules clean
 !**/src/main/**/target/
 !**/src/test/**/target/
-
-### STS ###
-.apt_generated
-.classpath
-.factorypath
-.project
-.settings
-.springBeans
-.sts4-cache
-
-### IntelliJ IDEA ###
-.idea
-*.iws
-*.iml
-*.ipr
-
-### NetBeans ###
-/nbproject/private/
-/nbbuild/
-/dist/
-/nbdist/
-/.nb-gradle/
-build/
 !**/src/main/**/build/
 !**/src/test/**/build/
 
-### VS Code ###
-.vscode/
+# Notebook artifacts (optional)
+# *.ipynb

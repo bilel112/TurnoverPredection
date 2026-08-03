@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { DynamicTurnoverService, EmployeeService } from '../services/api';
-import { Search, Plus, Edit, Trash2, Eye, X, Filter, BarChart3 } from 'lucide-react';
+import { Search, Plus, Edit, Trash2, Eye, X, Filter, BarChart3, Zap } from 'lucide-react';
 import ScoringDetails from './ScoringDetails';
 
 const EmployeeManager = ({ currentUser }) => {
@@ -11,15 +11,17 @@ const EmployeeManager = ({ currentUser }) => {
   const [currentPage, setCurrentPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
   const [employeeScores, setEmployeeScores] = useState({});
-  
+
   // Search & Filter State
   const [searchQuery, setSearchQuery] = useState('');
   const [deptFilter, setDeptFilter] = useState('');
   const [attritionFilter, setAttritionFilter] = useState('');
+  const [salaryFilter, setSalaryFilter] = useState('');
+  const [ageFilter, setAgeFilter] = useState('');
 
   // Modal State
   const [modalOpen, setModalOpen] = useState(false);
-  const [modalMode, setModalMode] = useState('view'); // 'view', 'create', 'edit'
+  const [modalMode, setModalMode] = useState('view');
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [scoringModalOpen, setScoringModalOpen] = useState(false);
   const [scoringEmployee, setScoringEmployee] = useState(null);
@@ -55,7 +57,9 @@ const EmployeeManager = ({ currentUser }) => {
   });
 
   useEffect(() => {
-    fetchEmployees();
+    if (!searchQuery && !deptFilter && !attritionFilter && !salaryFilter && !ageFilter) {
+      fetchEmployees();
+    }
   }, [currentPage, pageSize]);
 
   const hasRole = (roles) => {
@@ -101,21 +105,13 @@ const EmployeeManager = ({ currentUser }) => {
 
   const handleSearch = async (e) => {
     e.preventDefault();
-    // Since paginated endpoint uses spring's standard Pageable, we can also fetch all and filter in frontend for advanced filters, 
-    // or fetch from server. For a rich, responsive experience, if we search/filter, let's fetch all and filter on the frontend 
-    // if the search is active, otherwise stick to pagination. This gives a very fast responsive search!
-    if (!searchQuery && !deptFilter && !attritionFilter) {
-      fetchEmployees();
-      return;
-    }
-
     try {
       setLoading(true);
       const all = await EmployeeService.getAll();
       let filtered = all;
 
       if (searchQuery) {
-        filtered = filtered.filter(emp => 
+        filtered = filtered.filter(emp =>
           (emp.employeeNumber && emp.employeeNumber.toString().includes(searchQuery)) ||
           (emp.jobRole && emp.jobRole.toLowerCase().includes(searchQuery.toLowerCase()))
         );
@@ -130,7 +126,16 @@ const EmployeeManager = ({ currentUser }) => {
         filtered = filtered.filter(emp => emp.attrition === isAttrition);
       }
 
-      const nextEmployees = filtered.slice(0, pageSize);
+      if (salaryFilter) {
+        filtered = filtered.filter(emp => emp.monthlyIncome >= Number(salaryFilter));
+      }
+
+      if (ageFilter) {
+        filtered = filtered.filter(emp => emp.age >= Number(ageFilter));
+      }
+
+      const startIndex = currentPage * pageSize;
+      const nextEmployees = filtered.slice(startIndex, startIndex + pageSize);
       setEmployees(nextEmployees);
       setTotalPages(Math.ceil(filtered.length / pageSize));
       setTotalElements(filtered.length);
@@ -147,6 +152,8 @@ const EmployeeManager = ({ currentUser }) => {
     setSearchQuery('');
     setDeptFilter('');
     setAttritionFilter('');
+    setSalaryFilter('');
+    setAgeFilter('');
     setCurrentPage(0);
     fetchEmployees();
   };
@@ -228,6 +235,10 @@ const EmployeeManager = ({ currentUser }) => {
     }
   };
 
+  const handlePageChange = (newPage) => {
+    setCurrentPage(newPage);
+  };
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
@@ -235,26 +246,7 @@ const EmployeeManager = ({ currentUser }) => {
           <h1 className="title">Gestion des Employés</h1>
           <p className="subtitle">Consultez, modifiez et ajoutez les fiches employés</p>
         </div>
-        <div style={{ textAlign: 'right' }}>
-          <button className="btn btn-ghost" onClick={() => setShowScoringRules(prev => !prev)} style={{ marginBottom: 8 }}>
-            Règles Scoring
-          </button>
-          {showScoringRules && (
-            <div className="card" style={{ padding: '0.75rem', maxWidth: 360, textAlign: 'left' }}>
-              <div style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: 6 }}>Critères de calcul (poids)</div>
-              <ul style={{ fontSize: '0.85rem', margin: 0, paddingLeft: '1rem' }}>
-                <li>Ancienneté courte (≤1 an): +20</li>
-                <li>Beaucoup d'emplois antérieurs (≥4): +15</li>
-                <li>Heures supplémentaires: +12</li>
-                <li>Salaire bas (&lt;3000): +14</li>
-                <li>Faible satisfaction travail (≤2): +12</li>
-                <li>Faible satisfaction environnement: +8</li>
-                <li>Pas de promotion récente (≥3 ans): +10</li>
-                <li>Faible niveau d'options (≤0): +9</li>
-              </ul>
-            </div>
-          )}
-        </div>
+
         {hasRole(['HR','ADMIN']) && (
           <button className="btn btn-primary" onClick={() => openModal('create')}>
             <Plus size={18} />
@@ -299,12 +291,34 @@ const EmployeeManager = ({ currentUser }) => {
           </select>
         </div>
 
+        <div style={{ minWidth: '150px' }}>
+          <label className="form-label">Salaire (min)</label>
+          <input
+            type="number"
+            className="form-input"
+            placeholder="Ex: 3000"
+            value={salaryFilter}
+            onChange={(e) => setSalaryFilter(e.target.value)}
+          />
+        </div>
+
+        <div style={{ minWidth: '150px' }}>
+          <label className="form-label">Âge (min)</label>
+          <input
+            type="number"
+            className="form-input"
+            placeholder="Ex: 25"
+            value={ageFilter}
+            onChange={(e) => setAgeFilter(e.target.value)}
+          />
+        </div>
+
         <button type="submit" className="btn btn-secondary">
           <Filter size={16} />
           <span>Filtrer</span>
         </button>
 
-        {(searchQuery || deptFilter || attritionFilter) && (
+        {(searchQuery || deptFilter || attritionFilter || salaryFilter || ageFilter) && (
           <button type="button" className="btn btn-secondary" onClick={handleResetFilters}>
             Réinitialiser
           </button>
@@ -335,7 +349,7 @@ const EmployeeManager = ({ currentUser }) => {
             <tbody>
               {employees.length === 0 ? (
                 <tr>
-                  <td colSpan="7" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                  <td colSpan="8" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
                     Aucun employé trouvé.
                   </td>
                 </tr>
@@ -374,6 +388,20 @@ const EmployeeManager = ({ currentUser }) => {
                             }}>
                               <BarChart3 size={14} />
                             </button>
+                            <button className="btn btn-secondary btn-xs" title="Forcer scoring" onClick={async () => {
+                              try {
+                                setLoading(true);
+                                await DynamicTurnoverService.getScoreForEmployee(emp.id);
+                                fetchEmployees();
+                              } catch (error) {
+                                console.error('Erreur lors du scoring forcé', error);
+                                alert('Impossible de forcer le scoring. Vérifie le backend.');
+                              } finally {
+                                setLoading(false);
+                              }
+                            }}>
+                              <Zap size={14} />
+                            </button>
                             <button className="btn btn-secondary btn-xs" title="Voir détails" onClick={() => openModal('view', emp)}>
                               <Eye size={14} />
                             </button>
@@ -397,33 +425,96 @@ const EmployeeManager = ({ currentUser }) => {
             </tbody>
           </table>
 
-          {/* Pagination Footer */}
-          {!searchQuery && !deptFilter && !attritionFilter && (
-            <div className="pagination">
-              <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                Affichage de <strong>{employees.length}</strong> sur <strong>{totalElements}</strong> employés
-              </span>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <button
-                  className="btn btn-secondary btn-xs"
-                  disabled={currentPage === 0}
-                  onClick={() => setCurrentPage(prev => prev - 1)}
-                >
-                  Précédent
-                </button>
-                <span style={{ display: 'flex', alignItems: 'center', fontSize: '0.875rem', padding: '0 0.5rem' }}>
-                  Page {currentPage + 1} sur {totalPages}
-                </span>
-                <button
-                  className="btn btn-secondary btn-xs"
-                  disabled={currentPage >= totalPages - 1}
-                  onClick={() => setCurrentPage(prev => prev + 1)}
-                >
-                  Suivant
-                </button>
+          {/* Scoring Rules Button and Section */}
+          <div style={{ marginTop: '1.5rem', textAlign: 'left' }}>
+            <button
+              className="btn btn-ghost"
+              onClick={() => setShowScoringRules(prev => !prev)}
+              style={{
+                padding: '0.75rem 1.5rem',
+                fontWeight: 600,
+                border: '1px dashed var(--border-color)',
+                borderRadius: 'var(--radius-md)',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              {showScoringRules ? 'Masquer les règles de scoring' : 'Afficher les règles de scoring'}
+            </button>
+
+            {showScoringRules && (
+              <div
+                className="card"
+                style={{
+                  marginTop: '1rem',
+                  padding: '1.5rem',
+                  maxWidth: '100%',
+                  boxShadow: '0 4px 6px rgba(0, 0, 0, 0.05)',
+                  border: '1px solid var(--border-color)',
+                  fontSize: '1rem'
+                }}
+              >
+                <h4 style={{
+                  fontSize: '1.2rem',
+                  fontWeight: 700,
+                  marginBottom: '1.5rem',
+                  color: 'var(--text-primary)',
+                  borderBottom: '2px solid var(--primary)',
+                  paddingBottom: '0.75rem'
+                }}>
+                  Critères de calcul du score dynamique
+                </h4>
+                <ul style={{
+                  fontSize: '1rem',
+                  margin: 0,
+                  paddingLeft: '1.5rem',
+                  lineHeight: '1.8'
+                }}>
+                  <li><strong>Ancienneté courte (≤1 an) :</strong> +20 points</li>
+                  <li><strong>Beaucoup d'emplois antérieurs (≥4) :</strong> +15 points</li>
+                  <li><strong>Heures supplémentaires :</strong> +12 points</li>
+                  <li><strong>Salaire bas (&lt;3000 DT) :</strong> +14 points</li>
+                  <li><strong>Faible satisfaction travail (≤2) :</strong> +12 points</li>
+                  <li><strong>Faible satisfaction environnement (≤2) :</strong> +8 points</li>
+                  <li><strong>Pas de promotion récente (≥3 ans) :</strong> +10 points</li>
+                  <li><strong>Faible niveau d'options (≤0) :</strong> +9 points</li>
+                </ul>
+                <p style={{
+                  marginTop: '1.5rem',
+                  fontSize: '0.95rem',
+                  color: 'var(--text-muted)',
+                  fontStyle: 'italic'
+                }}>
+                  <strong>Note :</strong> Plus le score est élevé, plus le risque d'attrition est grand.
+                </p>
               </div>
+            )}
+          </div>
+
+          {/* Pagination Footer */}
+          <div className="pagination">
+            <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+              Affichage de <strong>{employees.length}</strong> sur <strong>{totalElements}</strong> employés
+            </span>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button
+                className="btn btn-secondary btn-xs"
+                disabled={currentPage === 0}
+                onClick={() => handlePageChange(currentPage - 1)}
+              >
+                Précédent
+              </button>
+              <span style={{ display: 'flex', alignItems: 'center', fontSize: '0.875rem', padding: '0 0.5rem' }}>
+                Page {currentPage + 1} sur {totalPages || 1}
+              </span>
+              <button
+                className="btn btn-secondary btn-xs"
+                disabled={currentPage >= (totalPages || 1) - 1}
+                onClick={() => handlePageChange(currentPage + 1)}
+              >
+                Suivant
+              </button>
             </div>
-          )}
+          </div>
         </div>
       )}
 
@@ -540,7 +631,7 @@ const EmployeeManager = ({ currentUser }) => {
               /* Create or Edit Form */
               <form onSubmit={handleSubmit}>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
-                  
+
                   {/* General details */}
                   <div className="form-group">
                     <label className="form-label">Numéro d'Employé</label>

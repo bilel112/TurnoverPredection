@@ -16,4 +16,14 @@ public class DynamicScoringProperties {
     private int lowEnvironmentSatisfactionWeight = 8;
     private int noRecentPromotionWeight = 10;
     private int lowStockOptionWeight = 9;
+
+    // Thresholds for alerts
+    private int highThreshold = 55;
+    private int mediumThreshold = 30;
+
+    // Trend detection delta (score change) to trigger trend alerts
+    private int trendDelta = 15;
+
+    // Scheduler interval in milliseconds for periodic evaluation (0 = disabled)
+    private long evaluationIntervalMs = 0;
 }

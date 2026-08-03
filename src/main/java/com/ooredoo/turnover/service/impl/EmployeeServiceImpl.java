@@ -3,6 +3,7 @@ package com.ooredoo.turnover.service.impl;
 import com.ooredoo.turnover.dto.EmployeeDTO;
 import com.ooredoo.turnover.entity.Employee;
 import com.ooredoo.turnover.repository.EmployeeRepository;
+import com.ooredoo.turnover.service.DynamicTurnoverScoringService;
 import com.ooredoo.turnover.service.EmployeeService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -18,21 +19,117 @@ import java.util.stream.Collectors;
 public class EmployeeServiceImpl implements EmployeeService {
 
     private final EmployeeRepository employeeRepository;
+    private final DynamicTurnoverScoringService scoringService;
 
-    public EmployeeServiceImpl(EmployeeRepository employeeRepository) {
+    public EmployeeServiceImpl(EmployeeRepository employeeRepository, DynamicTurnoverScoringService scoringService) {
         this.employeeRepository = employeeRepository;
+        this.scoringService = scoringService;
     }
 
     @Override
     public EmployeeDTO save(EmployeeDTO dto) {
         Employee employee = toEntity(dto);
         employee = employeeRepository.save(employee);
+        // After creating a new employee, trigger initial scoring
+        if (scoringService != null) {
+            try {
+                scoringService.calculateAndPersistForEmployee(employee.getId());
+            } catch (Exception ex) {
+                System.err.println("Failed to run initial scoring for employee " + employee.getId() + ": " + ex.getMessage());
+            }
+        }
         return toDto(employee);
     }
 
     @Override
     public EmployeeDTO update(EmployeeDTO dto) {
-        return save(dto);
+        if (dto.getId() == null) return save(dto);
+
+        var opt = employeeRepository.findById(dto.getId());
+        if (opt.isEmpty()) {
+            // create new if not exists
+            return save(dto);
+        }
+
+        Employee existing = opt.get();
+        Employee updatedEntity = toEntity(dto);
+
+        boolean significant = hasSignificantChange(existing, updatedEntity);
+
+        // copy updated fields into existing (only fields mapped in toEntity)
+        existing.setEmployeeNumber(updatedEntity.getEmployeeNumber());
+        existing.setAge(updatedEntity.getAge());
+        existing.setDepartment(updatedEntity.getDepartment());
+        existing.setJobRole(updatedEntity.getJobRole());
+        existing.setMonthlyIncome(updatedEntity.getMonthlyIncome());
+        existing.setYearsAtCompany(updatedEntity.getYearsAtCompany());
+        existing.setDistanceFromHome(updatedEntity.getDistanceFromHome());
+        existing.setOvertime(updatedEntity.getOvertime());
+        existing.setJobSatisfaction(updatedEntity.getJobSatisfaction());
+        existing.setEnvironmentSatisfaction(updatedEntity.getEnvironmentSatisfaction());
+        existing.setAttrition(updatedEntity.getAttrition());
+        existing.setBusinessTravel(updatedEntity.getBusinessTravel());
+        existing.setMaritalStatus(updatedEntity.getMaritalStatus());
+        existing.setJobLevel(updatedEntity.getJobLevel());
+        existing.setTotalWorkingYears(updatedEntity.getTotalWorkingYears());
+        existing.setYearsInCurrentRole(updatedEntity.getYearsInCurrentRole());
+        existing.setYearsWithCurrManager(updatedEntity.getYearsWithCurrManager());
+        existing.setYearsSinceLastPromotion(updatedEntity.getYearsSinceLastPromotion());
+        existing.setStockOptionLevel(updatedEntity.getStockOptionLevel());
+        existing.setNumCompaniesWorked(updatedEntity.getNumCompaniesWorked());
+        existing.setTrainingTimesLastYear(updatedEntity.getTrainingTimesLastYear());
+        existing.setWorkLifeBalance(updatedEntity.getWorkLifeBalance());
+        existing.setEducationField(updatedEntity.getEducationField());
+        existing.setEducation(updatedEntity.getEducation());
+        existing.setGender(updatedEntity.getGender());
+        existing.setDailyRate(updatedEntity.getDailyRate());
+        existing.setHourlyRate(updatedEntity.getHourlyRate());
+        existing.setPercentSalaryHike(updatedEntity.getPercentSalaryHike());
+        existing.setPerformanceRating(updatedEntity.getPerformanceRating());
+
+        Employee saved = employeeRepository.save(existing);
+
+        if (significant && scoringService != null) {
+            try {
+                scoringService.calculateAndPersistForEmployee(saved.getId());
+            } catch (Exception ex) {
+                System.err.println("Failed to calculate scoring after employee update " + saved.getId() + ": " + ex.getMessage());
+            }
+        }
+
+        return toDto(saved);
+    }
+
+    private boolean hasSignificantChange(Employee before, Employee after) {
+        if (before == null || after == null) return true;
+        // fields considered by scoring
+        if (!equalsInt(before.getYearsAtCompany(), after.getYearsAtCompany())) return true;
+        if (!equalsInt(before.getNumCompaniesWorked(), after.getNumCompaniesWorked())) return true;
+        if (!equalsBool(before.getOvertime(), after.getOvertime())) return true;
+        if (!equalsDouble(before.getMonthlyIncome(), after.getMonthlyIncome())) return true;
+        if (!equalsInt(before.getJobSatisfaction(), after.getJobSatisfaction())) return true;
+        if (!equalsInt(before.getEnvironmentSatisfaction(), after.getEnvironmentSatisfaction())) return true;
+        if (!equalsInt(before.getYearsSinceLastPromotion(), after.getYearsSinceLastPromotion())) return true;
+        if (!equalsInt(before.getStockOptionLevel(), after.getStockOptionLevel())) return true;
+        return false;
+    }
+
+    private boolean equalsInt(Integer a, Integer b) {
+        if (a == null && b == null) return true;
+        if (a == null || b == null) return false;
+        return a.intValue() == b.intValue();
+    }
+
+    private boolean equalsDouble(Double a, Double b) {
+        if (a == null && b == null) return true;
+        if (a == null || b == null) return false;
+        return Double.compare(a, b) == 0;
+    }
+
+    private boolean equalsBool(Boolean a, Boolean b) {
+        if (a == null && b == null) return true;
+        if (a == null || b == null) return false;
+        return a.booleanValue() == b.booleanValue();
     }
 
     @Override
