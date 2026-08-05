@@ -48,7 +48,7 @@ public class AlertController {
     @PostMapping("/employees/{employeeId}")
     @PreAuthorize("hasAnyRole('HR','MANAGER','ADMIN')")
     public ResponseEntity<Alert> createAlert(@PathVariable Long employeeId, @RequestBody CreateAlertRequest req) {
-        Alert a = alertService.createAlertForEmployee(employeeId, req.getTitle(), req.getMessage(), req.getSeverity());
+        Alert a = alertService.createAlertForEmployee(employeeId, req.getTitle(), req.getMessage(), req.getScore(), req.getReasons(), req.getSeverity());
         return ResponseEntity.ok(a);
     }
 
@@ -107,12 +107,18 @@ public class AlertController {
     public static class CreateAlertRequest {
         private String title;
         private String message;
+        private Integer score;
+        private String reasons;
         private String severity;
 
         public String getTitle() { return title; }
         public void setTitle(String title) { this.title = title; }
         public String getMessage() { return message; }
         public void setMessage(String message) { this.message = message; }
+        public Integer getScore() { return score; }
+        public void setScore(Integer score) { this.score = score; }
+        public String getReasons() { return reasons; }
+        public void setReasons(String reasons) { this.reasons = reasons; }
         public String getSeverity() { return severity; }
         public void setSeverity(String severity) { this.severity = severity; }
     }

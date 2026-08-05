@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { AlertService, EmployeeService } from '../services/api';
+import { normalizeAlertsResponse, normalizeAlertSummary } from '../utils/alertResponse';
 
 const Alerts = () => {
   const [alerts, setAlerts] = useState([]);
@@ -51,17 +52,17 @@ const Alerts = () => {
   const loadAlertSummary = async () => {
     try {
       const data = await AlertService.summary();
-      setSummary(data);
+      setSummary(normalizeAlertSummary(data));
     } catch (e) {
       console.error('Impossible de charger le résumé des alertes', e);
     }
   };
 
-  const loadAlerts = async () => {
+  const loadAlerts = async (status = filterStatus, severity = filterSeverity, showSpinner = true) => {
     try {
-      setLoading(true);
-      const data = await AlertService.list(filterStatus, filterSeverity);
-      setAlerts(data || []);
+      if (showSpinner) setLoading(true);
+      const data = await AlertService.list(status, severity);
+      setAlerts(normalizeAlertsResponse(data));
     } catch (e) {
       console.error(e);
       if (e.response?.status === 401) {
@@ -72,7 +73,7 @@ const Alerts = () => {
         setError('Impossible de charger les alertes.');
       }
     } finally {
-      setLoading(false);
+      if (showSpinner) setLoading(false);
     }
   };
 
@@ -89,6 +90,21 @@ const Alerts = () => {
   useEffect(() => {
     loadAlerts();
   }, [filterStatus, filterSeverity]);
+
+  // Polling automatique : recharge les alertes et le résumé à l'intervalle
+  // configuré (evaluationIntervalMs) pour que les alertes de risque générées
+  // par le scheduler backend apparaissent sans rechargement manuel.
+  // Le spinner est désactivé pendant le polling pour ne pas recharger l'écran.
+  useEffect(() => {
+    if (!config || !config.evaluationIntervalMs || config.evaluationIntervalMs <= 0) {
+      return;
+    }
+    const intervalId = setInterval(() => {
+      loadAlerts(filterStatus, filterSeverity, false);
+      loadAlertSummary();
+    }, config.evaluationIntervalMs);
+    return () => clearInterval(intervalId);
+  }, [config?.evaluationIntervalMs, filterStatus, filterSeverity]);
 
   const handleMarkRead = async (id) => {
     try {
@@ -167,6 +183,18 @@ const Alerts = () => {
 
   const handleFilterChange = (setter) => (e) => {
     setter(e.target.value);
+  };
+
+  const handleReloadAllAlerts = async () => {
+    try {
+      setFilterStatus('');
+      setFilterSeverity('');
+      setError(null);
+      await loadAlerts('', '');
+      await loadAlertSummary();
+    } catch (e) {
+      console.error('Impossible de recharger toutes les alertes', e);
+    }
   };
 
   const handleSendReport = async () => {
@@ -467,7 +495,7 @@ const Alerts = () => {
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '1rem', alignItems: 'end' }}>
           <label className="form-label">
             Filtrer par statut
             <select
@@ -494,69 +522,96 @@ const Alerts = () => {
               <option value="LOW">LOW</option>
             </select>
           </label>
+          <button type="button" className="btn btn-secondary" onClick={handleReloadAllAlerts}>
+            Charger toutes les alertes
+          </button>
         </div>
       </div>
 
       {/* Liste des alertes */}
-      {alerts.length === 0 ? (
+      {(!Array.isArray(alerts) || alerts.length === 0) ? (
         <div className="section-card">Aucune alerte trouvée.</div>
       ) : (
         <div style={{ display: 'grid', gap: '0.75rem' }}>
-          {alerts.map((a) => (
-            <div
-              key={a.id}
-              className="card"
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-              }}
-            >
-              <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                <div style={{ fontSize: '1.25rem' }}>
-                  {a.severity === 'HIGH' ? '🔴' : a.severity === 'MEDIUM' ? '🟡' : '🟢'}
-                </div>
-                <div>
-                  <div style={{ fontWeight: 700 }}>{a.title}</div>
-                  <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-                    {a.message}
-                  </div>
-                  <div
-                    style={{
-                      color: 'var(--text-muted)',
-                      fontSize: '0.8rem',
-                      marginTop: '0.25rem',
-                    }}
-                  >
-                    Employé:{' '}
-                    {a.employee?.id
-                      ? `${a.employee.id} - ${a.employee.jobRole || ''}`
-                      : 'N/A'}{' '}
-                    · {new Date(a.createdAt).toLocaleString()}
-                  </div>
-                </div>
-              </div>
+          {alerts.map((a) => {
+            const alertId = a?.id ?? a?.alertId;
+            const title = a?.title || 'Alerte sans titre';
+            const message = a?.message || 'Aucune description disponible';
+            const severity = a?.severity || 'LOW';
+            const status = a?.status || 'NEW';
+            const createdAt = a?.createdAt || a?.created_at;
+            const score = a?.score ?? null;
+            const reasons = Array.isArray(a?.reasons)
+              ? a.reasons.filter(Boolean).map((reason) => String(reason).trim())
+              : [];
+            const employee = a?.employee || a?.employeeEntity || null;
+            const employeeLabel = employee?.id
+              ? `${employee.id}${employee.jobRole ? ` - ${employee.jobRole}` : ''}`
+              : 'N/A';
 
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                {a.status !== 'READ' && (
-                  <button
-                    className="btn btn-secondary"
-                    onClick={() => handleMarkRead(a.id)}
-                  >
-                    Marquer lu
-                  </button>
-                )}
-                {a.status !== 'RESOLVED' && (
-                  <button
-                    className="btn btn-primary"
-                    onClick={() => handleResolve(a.id)}
-                  >
-                    Résoudre
-                  </button>
-                )}
+            return (
+              <div
+                key={alertId ?? `${title}-${createdAt}`}
+                className="card"
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
+              >
+                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                  <div style={{ fontSize: '1.25rem' }}>
+                    {severity === 'HIGH' ? '🔴' : severity === 'MEDIUM' ? '🟡' : '🟢'}
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 700 }}>{title}</div>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                      {message}
+                    </div>
+                    {score != null && (
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.2rem' }}>
+                        Score: <strong>{score}</strong>
+                      </div>
+                    )}
+                    {reasons.length > 0 && (
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '0.2rem' }}>
+                        Reasons: {reasons.join(' • ')}
+                      </div>
+                    )}
+                    <div
+                      style={{
+                        color: 'var(--text-muted)',
+                        fontSize: '0.8rem',
+                        marginTop: '0.25rem',
+                      }}
+                    >
+                      Employé: {employeeLabel}{' '}
+                      · {createdAt ? new Date(createdAt).toLocaleString() : 'Date inconnue'}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  {status !== 'READ' && (
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => handleMarkRead(alertId)}
+                    >
+                      Marquer lu
+                    </button>
+                  )}
+                  {status !== 'RESOLVED' && (
+                    <button
+                      className="btn btn-primary"
+                      onClick={() => handleResolve(alertId)}
+                    >
+                      Résoudre
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

@@ -22,7 +22,7 @@ public class Alert {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "employee_id")
     private Employee employee;
 
@@ -30,6 +30,11 @@ public class Alert {
 
     @Column(length = 2000)
     private String message;
+
+    private Integer score;
+
+    @Column(length = 4000)
+    private String reasons;
 
     private String severity; // e.g., LOW, MEDIUM, HIGH, CRITICAL
 

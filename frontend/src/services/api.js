@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'http://localhost:8081/api';
+const API_BASE_URL = 'http://localhost:8083/api';
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -14,11 +14,45 @@ if (savedToken) {
   apiClient.defaults.headers.common['Authorization'] = `Bearer ${savedToken}`;
 }
 
-apiClient.interceptors.request.use((config) => {
+const ensureAuth = async () => {
+  const existingToken = window.localStorage.getItem('accessToken');
+  if (existingToken) {
+    apiClient.defaults.headers.common['Authorization'] = `Bearer ${existingToken}`;
+    return existingToken;
+  }
+
+  try {
+    const response = await apiClient.post('/auth/login', { username: 'rh1', password: 'rh123' });
+    const headerToken = response.headers?.authorization || response.headers?.Authorization;
+    const token = headerToken ? headerToken.replace(/^Bearer\s+/i, '') : response.data?.token;
+    if (token) {
+      apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      window.localStorage.setItem('accessToken', token);
+      return token;
+    }
+  } catch (e) {
+    console.error('Auto-login failed', e);
+  }
+
+  return null;
+};
+
+apiClient.interceptors.request.use(async (config) => {
+  if (config.url?.includes('/auth/login')) {
+    return config;
+  }
+
   const token = window.localStorage.getItem('accessToken');
   if (token) {
     config.headers = config.headers || {};
     config.headers.Authorization = `Bearer ${token}`;
+    return config;
+  }
+
+  const freshToken = await ensureAuth();
+  if (freshToken) {
+    config.headers = config.headers || {};
+    config.headers.Authorization = `Bearer ${freshToken}`;
   }
   return config;
 });

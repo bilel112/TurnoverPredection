@@ -66,9 +66,11 @@ public class RecommendationServiceImpl implements RecommendationService {
         String aiResponse = callOpenRouter(prompt);
 
         // Parse AI response
-        RecommendationResponseDTO response = parseAiResponse(aiResponse);
+        RecommendationResponseDTO response = parseAiResponse(aiResponse, employeeDTO, scoreResult);
         if (response == null) {
             response = buildFallbackResponse(employeeDTO, scoreResult, reasons);
+        } else {
+            response = enforceRecommendationPolicy(response, employeeDTO, scoreResult, reasons);
         }
 
         response.setEmployeeId(employeeId);
@@ -118,7 +120,13 @@ public class RecommendationServiceImpl implements RecommendationService {
         StringBuilder sb = new StringBuilder();
         sb.append("Tu es un assistant RH spécialisé dans la rétention des talents.\n");
         sb.append("Tu as les informations d'un employé et ses raisons de risque de départ.\n");
-        sb.append("Génère 3 à 5 recommandations RH précises, avec un titre, une raison et une action concrète.\n");
+        List<String> expectedPriorities = determineRecommendationPriorities(employeeDTO, scoreResult);
+        int expectedCount = expectedPriorities.size();
+        sb.append(String.format("Génère exactement %d recommandations RH précises, avec un titre, une raison et une action concrète.\n", expectedCount));
+        sb.append("Le nombre et la gravité des recommandations doivent refléter la vraie sévérité métier :\n");
+        sb.append("- si le salaire est très bas, la satisfaction est faible, les heures supplémentaires sont élevées, ou le work-life balance est mauvais, une recommandation de priorité high est attendue\n");
+        sb.append("- si le problème est modéré, utiliser medium\n");
+        sb.append("- si le profil reste globalement stable, utiliser low\n");
         sb.append("Réponds en JSON avec les champs : summary, aiSummary, recommendations[].\n\n");
 
         sb.append("Contexte de l'employé :\n");
@@ -150,7 +158,7 @@ public class RecommendationServiceImpl implements RecommendationService {
         sb.append("\n");
         sb.append("Sors uniquement un objet JSON valide. Ne renvoie pas de texte explicatif hors JSON.\n");
         sb.append("Ne mets pas de bloc de code Markdown, pas de backticks, pas de texte hors du JSON.\n");
-        sb.append("Si tu ne peux pas générer 3 recommandations, renvoie au moins deux recommandations.\n");
+        sb.append("N'ajoute jamais plus de recommandations que le niveau de risque ne l'exige.\n");
         return sb.toString();
     }
 
@@ -190,7 +198,7 @@ public class RecommendationServiceImpl implements RecommendationService {
         return null;
     }
 
-    private RecommendationResponseDTO parseAiResponse(String aiResponse) {
+    private RecommendationResponseDTO parseAiResponse(String aiResponse, EmployeeDTO employeeDTO, DynamicTurnoverScoreResult scoreResult) {
         if (aiResponse == null || aiResponse.isBlank()) {
             return null;
         }
@@ -219,7 +227,7 @@ public class RecommendationServiceImpl implements RecommendationService {
                 }
             }
             response.setRecommendations(recommendations);
-            return response;
+            return enforceRecommendationPolicy(response, employeeDTO, scoreResult, List.of());
         } catch (Exception ex) {
             System.err.println("Unable to parse AI response as JSON. Raw response:\n" + aiResponse);
             ex.printStackTrace();
@@ -262,14 +270,239 @@ public class RecommendationServiceImpl implements RecommendationService {
         return cleaned.trim();
     }
 
+    List<String> determineRecommendationPriorities(EmployeeDTO employeeDTO, DynamicTurnoverScoreResult scoreResult) {
+        if (scoreResult == null) {
+            return List.of("low", "low", "low");
+        }
+        Integer score = scoreResult.getScore();
+        String riskLevel = scoreResult.getRiskLevel();
+        List<String> basePriorities;
+        
+        // Generate 3-5 recommendations based on risk level
+        if ((score != null && score >= 70) || "HIGH".equalsIgnoreCase(riskLevel)) {
+            // HIGH risk: 5 recommendations (low, medium, medium, high, high)
+            basePriorities = new ArrayList<>(List.of("low", "medium", "medium", "high", "high"));
+        } else if ((score != null && score >= 35) || "MEDIUM".equalsIgnoreCase(riskLevel)) {
+            // MEDIUM risk: 4 recommendations (low, low, medium, medium)
+            basePriorities = new ArrayList<>(List.of("low", "low", "medium", "medium"));
+        } else {
+            // LOW risk: 3 recommendations (all low)
+            basePriorities = new ArrayList<>(List.of("low", "low", "low"));
+        }
+
+        String dominantPriority = inferDominantPriority(employeeDTO);
+        if ("high".equals(dominantPriority)) {
+            // Boost the last 1-2 priorities to "high" for very severe cases
+            List<String> adjusted = new ArrayList<>(basePriorities);
+            if (adjusted.size() > 0) {
+                adjusted.set(adjusted.size() - 1, "high");
+            }
+            if (adjusted.size() > 1) {
+                adjusted.set(adjusted.size() - 2, "high");
+            }
+            return adjusted;
+        }
+        if ("medium".equals(dominantPriority)) {
+            // Boost the last 1-2 priorities to "medium" for moderate severity
+            List<String> adjusted = new ArrayList<>(basePriorities);
+            if (adjusted.size() > 0) {
+                adjusted.set(adjusted.size() - 1, "medium");
+            }
+            if (adjusted.size() > 1 && !"high".equals(adjusted.get(adjusted.size() - 2))) {
+                adjusted.set(adjusted.size() - 2, "medium");
+            }
+            return adjusted;
+        }
+        return basePriorities;
+    }
+
+    private String inferDominantPriority(EmployeeDTO employeeDTO) {
+        if (employeeDTO == null) {
+            return "low";
+        }
+
+        int severityScore = 0;
+        if (employeeDTO.getMonthlyIncome() != null) {
+            if (employeeDTO.getMonthlyIncome() < 2000) {
+                severityScore += 4;
+            } else if (employeeDTO.getMonthlyIncome() < 3500) {
+                severityScore += 2;
+            } else if (employeeDTO.getMonthlyIncome() < 5000) {
+                severityScore += 1;
+            }
+        }
+        if (employeeDTO.getJobSatisfaction() != null) {
+            if (employeeDTO.getJobSatisfaction() <= 2) {
+                severityScore += 3;
+            } else if (employeeDTO.getJobSatisfaction() == 3) {
+                severityScore += 2;
+            } else if (employeeDTO.getJobSatisfaction() == 4) {
+                severityScore += 1;
+            }
+        }
+        if (employeeDTO.getEnvironmentSatisfaction() != null) {
+            if (employeeDTO.getEnvironmentSatisfaction() <= 2) {
+                severityScore += 2;
+            } else if (employeeDTO.getEnvironmentSatisfaction() == 3) {
+                severityScore += 1;
+            }
+        }
+        if (employeeDTO.getWorkLifeBalance() != null) {
+            if (employeeDTO.getWorkLifeBalance() <= 2) {
+                severityScore += 2;
+            } else if (employeeDTO.getWorkLifeBalance() == 3) {
+                severityScore += 1;
+            }
+        }
+        if (employeeDTO.getOvertime() != null && Boolean.TRUE.equals(employeeDTO.getOvertime())) {
+            severityScore += 2;
+        }
+        if (employeeDTO.getYearsSinceLastPromotion() != null && employeeDTO.getYearsSinceLastPromotion() >= 3) {
+            severityScore += 1;
+        }
+        if (employeeDTO.getStockOptionLevel() != null && employeeDTO.getStockOptionLevel() <= 0) {
+            severityScore += 1;
+        }
+
+        if (severityScore >= 7) {
+            return "high";
+        }
+        if (severityScore >= 3) {
+            return "medium";
+        }
+        return "low";
+    }
+
+    private RecommendationResponseDTO enforceRecommendationPolicy(RecommendationResponseDTO response, EmployeeDTO employeeDTO, DynamicTurnoverScoreResult scoreResult, List<String> reasons) {
+        if (response == null) {
+            return response;
+        }
+
+        List<String> expectedPriorities = determineRecommendationPriorities(employeeDTO, scoreResult);
+        List<RecommendationItemDTO> recommendations = response.getRecommendations() == null
+                ? new ArrayList<>()
+                : new ArrayList<>(response.getRecommendations());
+
+        while (recommendations.size() < expectedPriorities.size()) {
+            recommendations.add(buildRecommendationForPriority(expectedPriorities.get(recommendations.size()), employeeDTO, scoreResult, reasons));
+        }
+        if (recommendations.size() > expectedPriorities.size()) {
+            recommendations = new ArrayList<>(recommendations.subList(0, expectedPriorities.size()));
+        }
+
+        for (int i = 0; i < recommendations.size(); i++) {
+            RecommendationItemDTO item = recommendations.get(i);
+            if (item == null) {
+                item = buildRecommendationForPriority(expectedPriorities.get(i), employeeDTO, scoreResult, reasons);
+                recommendations.set(i, item);
+            }
+            item.setPriority(normalizePriority(item.getPriority(), expectedPriorities.get(i)));
+            if (item.getTitle() == null || item.getTitle().isBlank()) {
+                item.setTitle(defaultTitleForPriority(expectedPriorities.get(i), employeeDTO));
+            }
+            if (item.getReason() == null || item.getReason().isBlank()) {
+                item.setReason(defaultReasonForPriority(expectedPriorities.get(i), employeeDTO, scoreResult));
+            }
+            if (item.getAction() == null || item.getAction().isBlank()) {
+                item.setAction(defaultActionForPriority(expectedPriorities.get(i), employeeDTO));
+            }
+        }
+
+        response.setRecommendations(recommendations);
+        response.setSummary(buildSummary(scoreResult, recommendations));
+        response.setAiSummary(buildAiSummary(scoreResult, recommendations));
+        return response;
+    }
+
+    private String normalizePriority(String priority, String defaultPriority) {
+        // Force the expected priority; ignore what the AI said
+        // This ensures each recommendation has exactly the priority we calculated
+        return defaultPriority;
+    }
+
+    private RecommendationItemDTO buildRecommendationForPriority(String priority, EmployeeDTO employeeDTO, DynamicTurnoverScoreResult scoreResult, List<String> reasons) {
+        RecommendationItemDTO item = new RecommendationItemDTO();
+        item.setPriority(priority);
+        item.setTitle(defaultTitleForPriority(priority, employeeDTO));
+        item.setReason(defaultReasonForPriority(priority, employeeDTO, scoreResult));
+        item.setAction(defaultActionForPriority(priority, employeeDTO));
+        return item;
+    }
+
+    private String defaultTitleForPriority(String priority, EmployeeDTO employeeDTO) {
+        if (employeeDTO != null && employeeDTO.getMonthlyIncome() != null && employeeDTO.getMonthlyIncome() < 2000) {
+            return "Révision salariale prioritaire";
+        }
+        if (employeeDTO != null && employeeDTO.getJobSatisfaction() != null && employeeDTO.getJobSatisfaction() <= 2) {
+            return "Amélioration de la satisfaction au travail";
+        }
+        if (employeeDTO != null && Boolean.TRUE.equals(employeeDTO.getOvertime())) {
+            return "Réduction des heures supplémentaires";
+        }
+        return switch (priority) {
+            case "high" -> "Entretien RH prioritaire";
+            case "medium" -> "Suivi manager renforcé";
+            default -> "Action de rétention simple";
+        };
+    }
+
+    private String defaultReasonForPriority(String priority, EmployeeDTO employeeDTO, DynamicTurnoverScoreResult scoreResult) {
+        String riskLabel = scoreResult != null && scoreResult.getRiskLabel() != null ? scoreResult.getRiskLabel() : "risque non défini";
+        if (employeeDTO != null && employeeDTO.getMonthlyIncome() != null && employeeDTO.getMonthlyIncome() < 2000) {
+            return "Le salaire actuel est très bas par rapport au marché, ce qui augmente le risque de départ.";
+        }
+        if (employeeDTO != null && employeeDTO.getJobSatisfaction() != null && employeeDTO.getJobSatisfaction() <= 2) {
+            return "La satisfaction au travail est faible, ce qui peut entraîner un désengagement progressif.";
+        }
+        if (employeeDTO != null && Boolean.TRUE.equals(employeeDTO.getOvertime())) {
+            return "Les heures supplémentaires fréquentes peuvent générer un épuisement professionnel et un risque de départ.";
+        }
+        return switch (priority) {
+            case "high" -> "Le profil présente un risque élevé de départ et mérite une action rapide.";
+            case "medium" -> "Le profil montre des signaux intermédiaires qui appellent un suivi ciblé.";
+            default -> "Le profil est globalement stable, mais une action de prévention reste utile pour le maintenir.";
+        } + " Niveau actuel : " + riskLabel + ".";
+    }
+
+    private String defaultActionForPriority(String priority, EmployeeDTO employeeDTO) {
+        if (employeeDTO != null && employeeDTO.getMonthlyIncome() != null && employeeDTO.getMonthlyIncome() < 2000) {
+            return "Évaluer une augmentation salariale ou une prime de rétention dans le prochain cycle RH.";
+        }
+        if (employeeDTO != null && employeeDTO.getJobSatisfaction() != null && employeeDTO.getJobSatisfaction() <= 2) {
+            return "Mettre en place un entretien RH régulier et proposer des ajustements de mission ou de management.";
+        }
+        if (employeeDTO != null && Boolean.TRUE.equals(employeeDTO.getOvertime())) {
+            return "Réorganiser les priorités et réduire les heures supplémentaires pour améliorer l’équilibre travail-vie personnelle.";
+        }
+        return switch (priority) {
+            case "high" -> "Planifier un entretien RH dans les 7 prochains jours et définir un plan de rétention.";
+            case "medium" -> "Organiser un suivi managérial et un échange sur les conditions de travail.";
+            default -> "Maintenir un suivi régulier et valoriser les points de stabilité du poste.";
+        };
+    }
+
+    private String buildSummary(DynamicTurnoverScoreResult scoreResult, List<RecommendationItemDTO> recommendations) {
+        int count = recommendations == null ? 0 : recommendations.size();
+        String label = scoreResult != null && scoreResult.getRiskLabel() != null ? scoreResult.getRiskLabel() : "non défini";
+        return String.format("Recommandations générées pour un risque %s (%d action%s).", label, count, count > 1 ? "s" : "");
+    }
+
+    private String buildAiSummary(DynamicTurnoverScoreResult scoreResult, List<RecommendationItemDTO> recommendations) {
+        int count = recommendations == null ? 0 : recommendations.size();
+        String label = scoreResult != null && scoreResult.getRiskLabel() != null ? scoreResult.getRiskLabel() : "non défini";
+        return String.format("Le niveau de risque %s a conduit à %d recommandation%s adaptée%s au contexte RH.", label, count, count > 1 ? "s" : "", count > 1 ? "s" : "");
+    }
+
     private RecommendationResponseDTO buildFallbackResponse(EmployeeDTO employeeDTO, DynamicTurnoverScoreResult scoreResult, List<String> reasons) {
         RecommendationResponseDTO response = new RecommendationResponseDTO();
         response.setSummary("Impossible d'obtenir une réponse de l'IA. Voici des recommandations basées sur les règles internes.");
         response.setAiSummary("Échec de l'appel OpenRouter, recommandations basées sur les règles internes.");
-        response.setRecommendations(List.of(
-                new RecommendationItemDTO("high", "Entretien RH recommandé", "Faible satisfaction et risque élevé.", "Planifier un entretien RH dans les 7 prochains jours."),
-                new RecommendationItemDTO("high", "Revue salariale ou prime de rétention", "Salaire bas détecté.", "Évaluer une augmentation ou une prime ciblée."),
-                new RecommendationItemDTO("medium", "Accompagnement managérial", "Heures supplémentaires et environnement faible.", "Mettre en place un suivi régulier avec le manager.")));
+        List<String> expectedPriorities = determineRecommendationPriorities(employeeDTO, scoreResult);
+        List<RecommendationItemDTO> recommendations = new ArrayList<>();
+        for (String priority : expectedPriorities) {
+            recommendations.add(buildRecommendationForPriority(priority, employeeDTO, scoreResult, reasons));
+        }
+        response.setRecommendations(recommendations);
         return response;
     }
 }

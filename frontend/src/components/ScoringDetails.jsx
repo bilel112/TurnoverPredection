@@ -55,8 +55,8 @@ const ScoringDetails = ({ employeeId, employeeName, employee = {}, onClose }) =>
 
   const parsedReasons = (reasons) => {
     if (!reasons) return [];
-    if (Array.isArray(reasons)) return reasons;
-    return reasons
+    if (Array.isArray(reasons)) return reasons.filter(Boolean).map((item) => String(item).trim());
+    return String(reasons)
       .split(/;|,|\n|\||\//)
       .map((item) => item.trim())
       .filter(Boolean);

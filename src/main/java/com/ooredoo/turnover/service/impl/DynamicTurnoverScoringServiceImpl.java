@@ -97,6 +97,13 @@ public class DynamicTurnoverScoringServiceImpl implements DynamicTurnoverScoring
         return new DynamicTurnoverScoreResult(score, "LOW", "Faible", reasons, LocalDateTime.now());
     }
 
+    public String formatAlertMessage(int score, List<String> reasons) {
+        String normalizedReasons = reasons == null || reasons.isEmpty()
+                ? "Aucun facteur détecté"
+                : String.join(";", reasons.stream().filter(reason -> reason != null && !reason.isBlank()).toList());
+        return String.format("Score: %d | Reasons: %s", score, normalizedReasons);
+    }
+
     @Override
     public DynamicTurnoverScoreResult calculateAndPersistForEmployee(Long employeeId) {
         Employee employee = employeeRepository.findById(employeeId)
@@ -113,32 +120,43 @@ public class DynamicTurnoverScoringServiceImpl implements DynamicTurnoverScoring
         String joinedReasons = String.join(";", result.getReasons());
         scoreEntity.setReasons(joinedReasons);
 
-        // Avoid persisting duplicate consecutive scores: if the latest saved score for this employee
-        // has the same numeric score, same risk level and same reasons, skip saving.
+        // Save the score only if it's not a duplicate of the latest score.
+        // IMPORTANT: do NOT return early here — alerts must be evaluated on every
+        // scheduled run even when the score is unchanged, otherwise risk alerts
+        // would never be created by the periodic scheduler.
+        boolean scoreWasPersisted = false;
+        List<EmployeeRiskScore> history = null;
         try {
-            var history = employeeRiskScoreRepository.findByEmployeeOrderByCalculatedAtDesc(employee);
+            history = employeeRiskScoreRepository.findByEmployeeOrderByCalculatedAtDesc(employee);
             if (history != null && !history.isEmpty()) {
                 EmployeeRiskScore latest = history.get(0);
                 boolean sameScore = latest.getScore() != null && latest.getScore().intValue() == scoreEntity.getScore();
                 boolean sameLevel = latest.getRiskLevel() != null && latest.getRiskLevel().equalsIgnoreCase(scoreEntity.getRiskLevel());
                 boolean sameReasons = (latest.getReasons() == null && scoreEntity.getReasons() == null) || (latest.getReasons() != null && latest.getReasons().equals(scoreEntity.getReasons()));
-                if (sameScore && sameLevel && sameReasons) {
-                    // Nothing new to persist
-                    return result;
+                if (!sameScore || !sameLevel || !sameReasons) {
+                    employeeRiskScoreRepository.save(scoreEntity);
+                    scoreWasPersisted = true;
                 }
+            } else {
+                employeeRiskScoreRepository.save(scoreEntity);
+                scoreWasPersisted = true;
             }
         } catch (Exception ex) {
             System.err.println("Error checking previous scores for employee " + employeeId + ": " + ex.getMessage());
         }
 
-        employeeRiskScoreRepository.save(scoreEntity);
+        if (!scoreWasPersisted) {
+            scoreEntity = history != null && !history.isEmpty() ? history.get(0) : scoreEntity;
+        }
 
         // Create an alert for high risk employees (MVP behavior)
         if ("HIGH".equalsIgnoreCase(result.getRiskLevel())) {
-            String message = String.format("Score: %d. Raisons: %s", result.getScore(), String.join(", ", result.getReasons()));
+            String message = formatAlertMessage(result.getScore(), result.getReasons());
             if (alertService != null) {
                 try {
-                    alertService.createAlertForEmployee(employeeId, "Risque élevé détecté", message, "HIGH");
+                    if (!alertService.hasActiveAlert(employeeId, "Risque élevé détecté", "HIGH")) {
+                        alertService.createAlertForEmployee(employeeId, "Risque élevé détecté", message, scoreEntity.getScore(), String.join(";", result.getReasons()), "HIGH");
+                    }
                 } catch (Exception ex) {
                     // Log and continue; alerting should not break scoring
                     System.err.println("Failed to create alert for employee " + employeeId + ": " + ex.getMessage());
@@ -154,8 +172,10 @@ public class DynamicTurnoverScoringServiceImpl implements DynamicTurnoverScoring
                     EmployeeRiskScore previous = history2.get(1); // 0 is current
                     int delta = scoreEntity.getScore() - previous.getScore();
                     if (delta >= scoringProperties.getTrendDelta()) {
-                        String msg = String.format("Score augmenté de %d points (actuel %d → précédent %d). Raisons: %s", delta, scoreEntity.getScore(), previous.getScore(), scoreEntity.getReasons());
-                        alertService.createAlertForEmployee(employeeId, "Tendance risque : augmentation rapide", msg, "MEDIUM");
+                        String msg = String.format("Score augmenté de %d points (actuel %d → précédent %d). %s", delta, scoreEntity.getScore(), previous.getScore(), formatAlertMessage(scoreEntity.getScore(), result.getReasons()));
+                        if (!alertService.hasActiveAlert(employeeId, "Tendance risque : augmentation rapide", "MEDIUM")) {
+                            alertService.createAlertForEmployee(employeeId, "Tendance risque : augmentation rapide", msg, scoreEntity.getScore(), String.join(";", result.getReasons()), "MEDIUM");
+                        }
                     }
                 }
             } catch (Exception ex) {

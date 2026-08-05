@@ -16,17 +16,21 @@ public class AlertConfigServiceImpl implements AlertConfigService {
 
     private final AlertConfigRepository alertConfigRepository;
     private final DynamicScoringProperties scoringProperties;
+    private final AlertScheduler alertScheduler;
 
     public AlertConfigServiceImpl(AlertConfigRepository alertConfigRepository,
-                                  DynamicScoringProperties scoringProperties) {
+                                  DynamicScoringProperties scoringProperties,
+                                  AlertScheduler alertScheduler) {
         this.alertConfigRepository = alertConfigRepository;
         this.scoringProperties = scoringProperties;
+        this.alertScheduler = alertScheduler;
     }
 
     @PostConstruct
     public void init() {
         AlertConfig config = getConfig();
         applyConfigToProperties(config);
+        alertScheduler.refreshSchedule();
     }
 
     @Override
@@ -47,6 +51,7 @@ public class AlertConfigServiceImpl implements AlertConfigService {
         existing.setEvaluationIntervalMs(config.getEvaluationIntervalMs());
         AlertConfig saved = alertConfigRepository.save(existing);
         applyConfigToProperties(saved);
+        alertScheduler.refreshSchedule();
         return saved;
     }
 

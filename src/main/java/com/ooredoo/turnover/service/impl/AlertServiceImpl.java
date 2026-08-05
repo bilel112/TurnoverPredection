@@ -24,7 +24,7 @@ public class AlertServiceImpl implements AlertService {
     }
 
     @Override
-    public Alert createAlertForEmployee(Long employeeId, String title, String message, String severity) {
+    public Alert createAlertForEmployee(Long employeeId, String title, String message, Integer score, String reasons, String severity) {
         Employee employee = employeeRepository.findById(employeeId)
                 .orElseThrow(() -> new IllegalArgumentException("Employee not found: " + employeeId));
 
@@ -32,12 +32,32 @@ public class AlertServiceImpl implements AlertService {
                 .employee(employee)
                 .title(title)
                 .message(message)
+                .score(score)
+                .reasons(reasons)
                 .severity(severity)
                 .status("NEW")
                 .createdAt(LocalDateTime.now())
                 .build();
 
         return alertRepository.save(alert);
+    }
+
+    @Override
+    public boolean hasActiveAlert(Long employeeId, String title, String severity) {
+        Employee employee = employeeRepository.findById(employeeId).orElse(null);
+        if (employee == null) {
+            return false;
+        }
+
+        return alertRepository.findByEmployeeOrderByCreatedAtDesc(employee).stream()
+                .anyMatch(alert -> {
+                    String normalizedTitle = title == null ? null : title.trim();
+                    String normalizedSeverity = severity == null ? null : severity.trim().toUpperCase();
+                    String alertStatus = alert.getStatus() == null ? "" : alert.getStatus().trim().toUpperCase();
+                    boolean sameTitle = normalizedTitle == null || normalizedTitle.equals(alert.getTitle());
+                    boolean sameSeverity = normalizedSeverity == null || normalizedSeverity.equalsIgnoreCase(alert.getSeverity());
+                    return sameTitle && sameSeverity && !"RESOLVED".equals(alertStatus);
+                });
     }
 
     @Override

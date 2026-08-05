@@ -2,6 +2,7 @@ package com.ooredoo.turnover.service;
 
 import com.ooredoo.turnover.config.DynamicScoringProperties;
 import com.ooredoo.turnover.entity.Employee;
+import com.ooredoo.turnover.entity.Alert;
 import com.ooredoo.turnover.repository.EmployeeRepository;
 import com.ooredoo.turnover.repository.EmployeeRiskScoreRepository;
 import com.ooredoo.turnover.entity.EmployeeRiskScore;
@@ -14,7 +15,11 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class DynamicTurnoverScoringServiceImplTest {
@@ -102,5 +107,56 @@ class DynamicTurnoverScoringServiceImplTest {
 
         assertEquals(1, history.size());
         assertEquals(List.of("ancienneté faible", "heures supplémentaires"), history.get(0).getReasons());
+    }
+
+    @Test
+    void shouldCreateAlertWhenHighRiskScoreAlreadyExists() {
+        Employee employee = new Employee();
+        employee.setId(1L);
+        employee.setYearsAtCompany(0);
+        employee.setNumCompaniesWorked(6);
+        employee.setOvertime(true);
+        employee.setMonthlyIncome(2100.0);
+        employee.setJobSatisfaction(1);
+        employee.setEnvironmentSatisfaction(1);
+        employee.setYearsSinceLastPromotion(0);
+        employee.setStockOptionLevel(0);
+        employee.setDistanceFromHome(27);
+
+        EmployeeRepository employeeRepository = mock(EmployeeRepository.class);
+        EmployeeRiskScoreRepository scoreRepository = mock(EmployeeRiskScoreRepository.class);
+        AlertService alertService = mock(AlertService.class);
+
+        when(employeeRepository.findById(1L)).thenReturn(Optional.of(employee));
+
+        EmployeeRiskScore existingScore = new EmployeeRiskScore();
+        existingScore.setScore(78);
+        existingScore.setRiskLevel("HIGH");
+        existingScore.setRiskLabel("Élevé");
+        existingScore.setReasons("ancienneté faible;heures supplémentaires");
+        existingScore.setCalculatedAt(LocalDateTime.now());
+
+        when(scoreRepository.findByEmployeeOrderByCalculatedAtDesc(employee)).thenReturn(List.of(existingScore));
+        when(alertService.hasActiveAlert(1L, "Risque élevé détecté", "HIGH")).thenReturn(false);
+        when(alertService.createAlertForEmployee(eq(1L), eq("Risque élevé détecté"), anyString(), anyInt(), anyString(), eq("HIGH")))
+                .thenReturn(Alert.builder().id(99L).build());
+
+        DynamicScoringProperties properties = new DynamicScoringProperties();
+        DynamicTurnoverScoringServiceImpl service = new DynamicTurnoverScoringServiceImpl(employeeRepository, scoreRepository, properties, alertService);
+        service.calculateAndPersistForEmployee(1L);
+
+        verify(alertService).createAlertForEmployee(eq(1L), eq("Risque élevé détecté"), anyString(), anyInt(), anyString(), eq("HIGH"));
+    }
+
+    @Test
+    void shouldFormatAlertMessageWithScoreAndSemicolonSeparatedReasons() {
+        DynamicTurnoverScoringServiceImpl service = new DynamicTurnoverScoringServiceImpl(
+                mock(EmployeeRepository.class),
+                mock(EmployeeRiskScoreRepository.class),
+                new DynamicScoringProperties());
+
+        String message = service.formatAlertMessage(62, List.of("ancienneté faible", "heures supplémentaires"));
+
+        assertEquals("Score: 62 | Reasons: ancienneté faible;heures supplémentaires", message);
     }
 }
