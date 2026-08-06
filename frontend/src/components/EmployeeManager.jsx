@@ -11,6 +11,9 @@ const EmployeeManager = ({ currentUser }) => {
   const [currentPage, setCurrentPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
   const [employeeScores, setEmployeeScores] = useState({});
+  const [scoresLoading, setScoresLoading] = useState(false);
+  const [scoresTotal, setScoresTotal] = useState(0);
+  const [scoresFetched, setScoresFetched] = useState(0);
 
   // Search & Filter State
   const [searchQuery, setSearchQuery] = useState('');
@@ -18,6 +21,7 @@ const EmployeeManager = ({ currentUser }) => {
   const [attritionFilter, setAttritionFilter] = useState('');
   const [salaryFilter, setSalaryFilter] = useState('');
   const [ageFilter, setAgeFilter] = useState('');
+  const [scoreFilter, setScoreFilter] = useState('');
 
   // Modal State
   const [modalOpen, setModalOpen] = useState(false);
@@ -57,34 +61,63 @@ const EmployeeManager = ({ currentUser }) => {
   });
 
   useEffect(() => {
-    if (!searchQuery && !deptFilter && !attritionFilter && !salaryFilter && !ageFilter) {
+    const hasActiveFilters = Boolean(searchQuery || deptFilter || attritionFilter || salaryFilter || ageFilter || scoreFilter);
+    if (!hasActiveFilters) {
       fetchEmployees();
+    } else {
+      applyFilters(currentPage);
     }
-  }, [currentPage, pageSize]);
+  }, [currentPage, pageSize, searchQuery, deptFilter, attritionFilter, salaryFilter, ageFilter, scoreFilter]);
 
   const hasRole = (roles) => {
     const r = (currentUser?.roleName || '').toString().trim().toUpperCase();
     return roles.map(x => x.toUpperCase()).includes(r);
   };
 
-  const loadScoresForEmployees = async (employeeList) => {
+  // Fetch scores with limited concurrency to avoid flooding the backend.
+  const loadScoresForEmployees = async (employeeList, concurrency = 5, reportProgress = false) => {
     if (!employeeList || employeeList.length === 0) {
+      if (reportProgress) {
+        setScoresTotal(0);
+        setScoresFetched(0);
+      }
       setEmployeeScores({});
-      return;
+      return {};
     }
 
     const scoreMap = {};
-    await Promise.allSettled(employeeList.map(async (emp) => {
-      if (!emp?.id) return;
-      try {
-        const score = await DynamicTurnoverService.getScoreForEmployee(emp.id);
-        scoreMap[emp.id] = score;
-      } catch (error) {
-        scoreMap[emp.id] = null;
+    const ids = employeeList.map(e => e.id).filter(Boolean);
+    if (reportProgress) {
+      setScoresTotal(ids.length);
+      setScoresFetched(0);
+      setScoresLoading(true);
+    } else {
+      setScoresLoading(true);
+    }
+
+    for (let i = 0; i < ids.length; i += concurrency) {
+      const chunk = ids.slice(i, i + concurrency);
+      const promises = chunk.map(async (id) => {
+        try {
+          const score = await DynamicTurnoverService.getScoreForEmployee(id);
+          scoreMap[id] = score;
+        } catch (error) {
+          scoreMap[id] = null;
+        }
+      });
+      // eslint-disable-next-line no-await-in-loop
+      await Promise.allSettled(promises);
+      if (reportProgress) {
+        setScoresFetched(prev => prev + chunk.length);
       }
-    }));
+    }
 
     setEmployeeScores(prev => ({ ...prev, ...scoreMap }));
+    setScoresLoading(false);
+    if (reportProgress) {
+      setScoresFetched(ids.length);
+    }
+    return scoreMap;
   };
 
   const fetchEmployees = async () => {
@@ -95,7 +128,8 @@ const EmployeeManager = ({ currentUser }) => {
       setEmployees(nextEmployees);
       setTotalPages(data.totalPages || 0);
       setTotalElements(data.totalElements || 0);
-      await loadScoresForEmployees(nextEmployees);
+      // Load scores in background (don't block UI) with controlled concurrency
+      loadScoresForEmployees(nextEmployees);
     } catch (error) {
       console.error("Erreur lors de la récupération des employés", error);
     } finally {
@@ -105,6 +139,10 @@ const EmployeeManager = ({ currentUser }) => {
 
   const handleSearch = async (e) => {
     e.preventDefault();
+    await applyFilters(0);
+  };
+
+  const applyFilters = async (page = 0) => {
     try {
       setLoading(true);
       const all = await EmployeeService.getAll();
@@ -134,13 +172,36 @@ const EmployeeManager = ({ currentUser }) => {
         filtered = filtered.filter(emp => emp.age >= Number(ageFilter));
       }
 
-      const startIndex = currentPage * pageSize;
+      // If score filter is selected, fetch scores for the FULL filtered set via bulk endpoint (server-side)
+      if (scoreFilter) {
+        try {
+          const ids = filtered.map(e => e.id).filter(Boolean);
+          setScoresLoading(true);
+          const fullScoreMap = await DynamicTurnoverService.getScoresForEmployees(ids);
+          filtered = filtered.filter(emp => {
+            const s = fullScoreMap[emp.id];
+            return s && s.riskLevel === scoreFilter.toUpperCase();
+          });
+          setScoresLoading(false);
+        } catch (err) {
+          console.error('Bulk score fetch failed, falling back to incremental', err);
+          // fallback to previous behavior
+          const fullScoreMap = await loadScoresForEmployees(filtered, 5, true);
+          filtered = filtered.filter(emp => {
+            const s = fullScoreMap[emp.id];
+            return s && s.riskLevel === scoreFilter.toUpperCase();
+          });
+        }
+      }
+
+      const startIndex = page * pageSize;
       const nextEmployees = filtered.slice(startIndex, startIndex + pageSize);
       setEmployees(nextEmployees);
       setTotalPages(Math.ceil(filtered.length / pageSize));
       setTotalElements(filtered.length);
-      setCurrentPage(0);
-      await loadScoresForEmployees(nextEmployees);
+      setCurrentPage(page);
+      // Preload scores for visible page (no progress reporting)
+      loadScoresForEmployees(nextEmployees, 5, false);
     } catch (error) {
       console.error("Erreur filtrage", error);
     } finally {
@@ -154,7 +215,10 @@ const EmployeeManager = ({ currentUser }) => {
     setAttritionFilter('');
     setSalaryFilter('');
     setAgeFilter('');
+    setScoreFilter('');
     setCurrentPage(0);
+    setScoresTotal(0);
+    setScoresFetched(0);
     fetchEmployees();
   };
 
@@ -236,7 +300,13 @@ const EmployeeManager = ({ currentUser }) => {
   };
 
   const handlePageChange = (newPage) => {
-    setCurrentPage(newPage);
+    const hasActiveFilters = Boolean(searchQuery || deptFilter || attritionFilter || salaryFilter || ageFilter || scoreFilter);
+    if (hasActiveFilters) {
+      applyFilters(newPage);
+    } else {
+      setCurrentPage(newPage);
+      fetchEmployees();
+    }
   };
 
   return (
@@ -313,12 +383,22 @@ const EmployeeManager = ({ currentUser }) => {
           />
         </div>
 
+        <div style={{ minWidth: '150px' }}>
+          <label className="form-label">Score Risque</label>
+          <select className="form-select" value={scoreFilter} onChange={(e) => setScoreFilter(e.target.value)}>
+            <option value="">Tous</option>
+            <option value="LOW">Faible</option>
+            <option value="MEDIUM">Moyen</option>
+            <option value="HIGH">Élevé</option>
+          </select>
+        </div>
+
         <button type="submit" className="btn btn-secondary">
           <Filter size={16} />
           <span>Filtrer</span>
         </button>
 
-        {(searchQuery || deptFilter || attritionFilter || salaryFilter || ageFilter) && (
+        {(searchQuery || deptFilter || attritionFilter || salaryFilter || ageFilter || scoreFilter) && (
           <button type="button" className="btn btn-secondary" onClick={handleResetFilters}>
             Réinitialiser
           </button>
@@ -333,6 +413,15 @@ const EmployeeManager = ({ currentUser }) => {
         </div>
       ) : (
         <div className="table-container">
+            {scoresLoading && (
+              <div style={{ marginBottom: '0.5rem', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                {scoresTotal > 0 ? (
+                  `Filtrage par score... ${scoresFetched}/${scoresTotal}`
+                ) : (
+                  'Chargement des scores de risque...'
+                )}
+              </div>
+            )}
           <table className="custom-table">
             <thead>
               <tr>

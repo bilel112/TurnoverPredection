@@ -1,7 +1,7 @@
 # Plan de travail Power BI - Turnover Dashboard
 
 ## Objectif
-Ce fichier sert de guide de travail pour construire le dashboard Power BI de manière progressive, directement dans Power BI, avec une approche simple et utile pour la décision RH.
+Ce fichier sert de guide de travail pour construire le dashboard Power BI de façon progressive, précise et reproductible. Il doit être suffisamment détaillé pour qu’une personne puisse suivre chaque étape dans Power BI sans ambiguïté.
 
 ## Orientation du travail
 Le dashboard doit répondre à 3 questions RH simples :
@@ -10,10 +10,10 @@ Le dashboard doit répondre à 3 questions RH simples :
 - Quelles actions faut-il prendre ?
 
 ## Version de départ
-La première version devra rester simple :
+La première version doit rester simple, claire et utile :
 - 1 page principale
-- 5 KPI
-- 1 graphique principal
+- 4 cards KPI
+- 1 graphique simple
 - 1 tableau de détail
 
 ---
@@ -24,104 +24,152 @@ La première version devra rester simple :
 - [x] Définir le sujet du dashboard : Turnover Risk Monitoring
 - [x] Choisir une structure simple et claire
 - [x] Définir l’objectif principal du dashboard
-- [ ] Ouvrir Power BI et créer le fichier de travail
+- [x] Ouvrir Power BI et créer le fichier de travail
 
-Progression : 75%
+Progression : 100%
 
 ### 2. Importer les données
-- [ ] Charger les données sources dans Power BI
-- [ ] Vérifier les colonnes utiles
-- [ ] Nettoyer les données si nécessaire
-- [ ] Vérifier les types de données
+- [x] Charger les fichiers dans Power BI
+- [x] Vérifier les colonnes disponibles dans chaque table
+- [x] Renommer les tables pour plus de clarté
+- [x] Vérifier les types de données de base
 
-Progression : 0%
+Progression : 100%
 
 ### 3. Construire le modèle de données
-- [ ] Créer les relations entre les tables
-- [ ] Ajouter les colonnes métier nécessaires
-- [ ] Définir les dimensions utiles : département, employé, ancienneté, niveau de risque
-- [ ] Préparer les faits utiles : score, satisfaction, salaire, alertes
+- [x] Créer les relations entre les tables
+- [x] Utiliser la colonne EmployeeID comme clé de jointure
+- [x] Choisir Cross filter direction = Single pour démarrer
+- [x] Vérifier que les tables sont liées de façon logique
 
-Progression : 0%
+Progression : 100%
 
-### 4. Ajouter les KPI principaux
-- [ ] Effectif total
-- [ ] Taux d’attrition
-- [ ] Nombre d’employés à haut risque
-- [ ] Satisfaction moyenne
-- [ ] Salaire moyen
-- [ ] Nombre d’alertes actives
+### 4. Ajouter les 4 cards KPI sur la première page
+- [x] Créer la première card : Total employees
+  - Source : Employees
+  - Colonne utilisée : EmployeeID
+  - Mesure : Count of EmployeeID
+  - But : afficher le nombre total d’employés
 
-Progression : 0%
+- [x] Créer la deuxième card : Average salary
+  - Source : Employees
+  - Colonne utilisée : MonthlyIncome
+  - Mesure : Average of MonthlyIncome
+  - But : afficher le salaire moyen
 
-### 5. Créer la page 1 - Vue générale
-- [ ] Ajouter les KPI
-- [ ] Ajouter un slicer par département ou service
-- [ ] Ajouter un graphique de répartition par département
-- [ ] Rendre la page lisible et claire
+- [x] Créer la troisième card : Average job satisfaction
+  - Source : Employees
+  - Colonne utilisée : JobSatisfaction
+  - Mesure : Average of JobSatisfaction
+  - But : afficher la satisfaction moyenne
+
+- [x] Créer la quatrième card : Active alerts
+  - Source : Alerts
+  - Colonne utilisée : AlertID
+  - Mesure : Count of AlertID
+  - But : afficher le nombre d’alertes actives
+
+Progression : 100%
+
+### 5. Créer la première page - Vue générale
+- [ ] Ajouter un titre de page : Turnover Overview
+- [ ] Organiser les 4 cards en grille simple
+- [ ] Ajouter un slicer par Department pour filtrer les données
+- [ ] Ajouter un graphique en barres par Department
+- [ ] Ajouter un tableau de détail avec les employés à risque
 
 Progression : 0%
 
 ### 6. Créer la page 2 - Analyse des risques
-- [ ] Ajouter la liste des employés à risque
-- [ ] Ajouter les facteurs de risque fréquents
+- [ ] Ajouter une visualisation des employés avec le plus haut score
+- [ ] Ajouter un graphique sur les facteurs de risque fréquents
 - [ ] Ajouter une vue par niveau de risque
-- [ ] Ajouter un visuel simple d’évolution si possible
+- [ ] Ajouter un filtre par RiskLevel si possible
 
 Progression : 0%
 
 ### 7. Créer la page 3 - Actions RH
-- [ ] Ajouter les actions recommandées
-- [ ] Ajouter la priorité d’intervention
-- [ ] Ajouter les personnes ou groupes à contacter
-- [ ] Transformer la page en vue décision RH
+- [ ] Ajouter une liste d’actions recommandées
+- [ ] Ajouter une priorité d’intervention
+- [ ] Ajouter les employés à contacter en priorité
+- [ ] Transformer cette page en vue décision RH
 
 Progression : 0%
 
 ### 8. Finaliser le rendu Power BI
 - [ ] Harmoniser les couleurs
-- [ ] Vérifier la cohérence entre les pages
+- [ ] Vérifier la lisibilité du dashboard
 - [ ] Simplifier si le dashboard devient trop chargé
-- [ ] Préparer une version de démonstration propre
+- [ ] Préparer une version propre pour démonstration
 
 Progression : 0%
 
 ---
 
-## Visuels à utiliser d’abord
-- [ ] Carte KPI
-- [ ] Graphique en barres
-- [ ] Graphique en colonnes
-- [ ] Tableau de données
-- [ ] Slicers simples
+## Détails techniques à respecter dans Power BI
+
+### A. Tables à utiliser
+- Employees
+  - Colonnes utiles : EmployeeID, Department, MonthlyIncome, JobSatisfaction, Age, Attrition
+- RiskScores
+  - Colonnes utiles : EmployeeID, score, risk_level, risk_label, reasons
+- Alerts
+  - Colonnes utiles : EmployeeID, severity, status, title, created_at
+
+### B. Colonnes de jointure
+- Employees[EmployeeID]
+- RiskScores[EmployeeID]
+- Alerts[EmployeeID]
+
+### C. Mesures à créer pour les cards KPI
+
+1. Total employees
+```DAX
+Total Employees = COUNT(Employees[EmployeeID])
+```
+
+2. Average salary
+```DAX
+Average Salary = AVERAGE(Employees[MonthlyIncome])
+```
+
+3. Average job satisfaction
+```DAX
+Average Job Satisfaction = AVERAGE(Employees[JobSatisfaction])
+```
+
+4. Active alerts
+```DAX
+Active Alerts = COUNT(Alerts[AlertID])
+```
+
+### D. Visuals à ajouter ensuite
+- Card visual
+- Slicer visual
+- Bar chart
+- Table visual
+
+### E. Bon ordre de travail
+1. Créer les cards KPI
+2. Ajouter un slicer par Department
+3. Ajouter un graphique en barres par Department
+4. Ajouter un tableau de détail
+5. Ensuite seulement ajouter une page de risque et une page d’actions RH
 
 ---
 
-## Données à préparer en priorité
-Les données à privilégier dans Power BI sont :
-- Employés
-- Score de risque
-- Département
-- Ancienneté
-- Satisfaction
-- Salaire
-- Alertes
-- Historique de risque si disponible
+## Ce qu’il faut éviter pour l’instant
+- Trop de pages trop tôt
+- Trop de graphiques trop compliqués
+- Trop de couleurs ou de styles inutiles
+- Des mesures trop complexes avant la base du dashboard
 
 ---
 
-## Plan de travail recommandé
-1. Démarrer par la structure simple du dashboard
-2. Importer les données essentielles
-3. Ajouter les KPI principaux
-4. Créer une première page propre
-5. Ajouter ensuite les analyses de risque
-6. Finaliser avec la page actions RH
-
----
-
-## Prochaine étape
-Nous allons maintenant passer à la première action concrète dans Power BI :
-- créer le fichier de dashboard,
-- importer les données,
-- puis préparer la première page de synthèse.
+## Prochaine étape concrète
+La prochaine étape consiste à :
+1. Ajouter un titre à la page
+2. Organiser les 4 cards KPI
+3. Ajouter un slicer par Department
+4. Ajouter un bar chart simple par Department
+5. Ajouter un tableau de détail avec les employés et leur risque

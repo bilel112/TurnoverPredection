@@ -180,6 +180,10 @@ export const DynamicTurnoverService = {
     const response = await apiClient.get(`/turnover-scoring/employees/${employeeId}/score`);
     return response.data;
   },
+  getScoresForEmployees: async (employeeIds) => {
+    const response = await apiClient.post('/turnover-scoring/employees/bulk', employeeIds);
+    return response.data;
+  },
   getScoreHistoryForEmployee: async (employeeId) => {
     const response = await apiClient.get(`/turnover-scoring/employees/${employeeId}/history`);
     return response.data;

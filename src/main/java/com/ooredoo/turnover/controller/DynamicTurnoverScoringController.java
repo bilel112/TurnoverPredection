@@ -6,6 +6,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -31,5 +33,11 @@ public class DynamicTurnoverScoringController {
     @PreAuthorize("hasAnyRole('HR','MANAGER','ADMIN')")
     public ResponseEntity<List<DynamicTurnoverScoreResult>> getHistory(@PathVariable Long employeeId) {
         return ResponseEntity.ok(dynamicTurnoverScoringService.getHistoryForEmployee(employeeId));
+    }
+
+    @PostMapping("/employees/bulk")
+    @PreAuthorize("hasAnyRole('HR','MANAGER','ADMIN')")
+    public ResponseEntity<java.util.Map<Long, DynamicTurnoverScoreResult>> getScoresForEmployees(@RequestBody java.util.List<Long> employeeIds) {
+        return ResponseEntity.ok(dynamicTurnoverScoringService.calculateScoresForEmployees(employeeIds));
     }
 }

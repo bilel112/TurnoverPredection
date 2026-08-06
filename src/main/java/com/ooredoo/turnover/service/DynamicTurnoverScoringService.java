@@ -11,4 +11,6 @@ public interface DynamicTurnoverScoringService {
     DynamicTurnoverScoreResult calculateAndPersistForEmployee(Long employeeId);
 
     List<DynamicTurnoverScoreResult> getHistoryForEmployee(Long employeeId);
+
+    java.util.Map<Long, DynamicTurnoverScoreResult> calculateScoresForEmployees(java.util.List<Long> employeeIds);
 }

@@ -201,4 +201,20 @@ public class DynamicTurnoverScoringServiceImpl implements DynamicTurnoverScoring
                         score.getCalculatedAt()))
                 .toList();
     }
+
+    @Override
+    public java.util.Map<Long, DynamicTurnoverScoreResult> calculateScoresForEmployees(java.util.List<Long> employeeIds) {
+        java.util.Map<Long, DynamicTurnoverScoreResult> result = new java.util.HashMap<>();
+        if (employeeIds == null || employeeIds.isEmpty()) return result;
+        Iterable<Employee> employees = employeeRepository.findAllById(employeeIds);
+        for (Employee e : employees) {
+            try {
+                DynamicTurnoverScoreResult r = calculateScore(e);
+                result.put(e.getId(), r);
+            } catch (Exception ex) {
+                result.put(e.getId(), null);
+            }
+        }
+        return result;
+    }
 }
